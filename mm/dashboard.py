@@ -16,6 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from .api import PolymarketAPI
+from .events import write_json_atomic
 from .scanner import Filters, scan
 from .strategy import StrategyConfig
 
@@ -82,6 +83,15 @@ class Hub:
         self.known_candidates: set[str] = set()
         self.book_cache: dict[str, tuple[float, dict]] = {}
         self.hist_cache: dict[str, tuple[float, list]] = {}
+        self.scan_path = os.path.join(log_dir, "scan.json")
+        try:  # keep the last scan results across restarts
+            with open(self.scan_path) as f:
+                saved = json.load(f)
+            saved.update(status="klaar", phase=None, next_at=time.time() + 5)
+            self.scan_state.update(saved)
+            self.known_candidates = {c["slug"] for c in saved.get("candidates", [])}
+        except (FileNotFoundError, ValueError, KeyError):
+            pass
 
     # ---- events ----------------------------------------------------------
     def _push(self, ev: dict) -> None:
@@ -101,6 +111,20 @@ class Hub:
             self.last_mid[slug] = mid
         if live:
             self._push(ev)
+
+    def load_once(self) -> None:
+        """Read the whole event log once (used by the GitHub Pages publisher)."""
+        path = os.path.join(self.log_dir, "events.jsonl")
+        for p in (path + ".1", path):
+            try:
+                with open(p) as f:
+                    for line in f:
+                        try:
+                            self._ingest(json.loads(line), live=True)
+                        except ValueError:
+                            pass
+            except FileNotFoundError:
+                pass
 
     def tail_events(self) -> None:
         path = os.path.join(self.log_dir, "events.jsonl")
@@ -195,6 +219,10 @@ class Hub:
                             "reward_day": row["reward_day"], "new": row["new"], "rank": i})
         self.known_candidates |= {r["slug"] for r in out}
         st.update(status="klaar", phase=None, candidates=out, stats=stats, last_done=time.time(), error=None)
+        try:
+            write_json_atomic(self.scan_path, {"candidates": out, "stats": stats, "last_done": st["last_done"]})
+        except OSError:
+            pass
         self._push({"ts": time.time(), "type": "scan_done", "total": stats.get("total"), "passed": len(out)})
 
     # ---- data access -------------------------------------------------------

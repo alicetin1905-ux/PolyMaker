@@ -243,6 +243,8 @@ tr.click:hover td { background: rgba(255,255,255,.025); }
 .note { font-size: 12px; color: var(--muted); margin-top: 10px; }
 .offline-banner { display: none; margin-bottom: 14px; padding: 12px 14px; border-radius: 12px; border: 1px solid rgba(208,59,59,.5); background: rgba(208,59,59,.08); color: var(--text); font-size: 13px; }
 .offline-banner.show { display: flex; gap: 10px; align-items: center; }
+.offline-banner.info { border-color: rgba(57,135,229,.45); background: rgba(57,135,229,.07); }
+.offline-banner.info .led { background: var(--blue); box-shadow: 0 0 8px var(--blue); }
 
 @media (max-width: 1020px) {
   .hero { grid-template-columns: 1fr; }
@@ -326,10 +328,101 @@ const shortQ = q => String(q || "").replace(/^Will (the )?/i, "").replace(/\?$/,
 const COLORS = { data: "#5b7fb0", signal: "#3987e5", fillBuy: "#199e70", fillSell: "#d95926", cand: "#9085e9", warn: "#fab219", crit: "#d03b3b", rewards: "#199e70", trading: "#d95926", total: "#3987e5" };
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-async function api(path) {
-  const r = await fetch(path, { cache: "no-store" });
+const STATIC = !!window.POLYMAKER_STATIC;
+const CLOB = "https://clob.polymarket.com";
+async function getJSON(url) {
+  const r = await fetch(url + (url.includes("?") ? "&" : "?") + "_=" + Date.now(), { cache: "no-store" });
   if (!r.ok) throw new Error(r.status);
   return r.json();
+}
+// ---- online (GitHub Pages) mode: bot data from published JSON, prices live from Polymarket ----
+const LIVE = { q: {}, spark: {} };   // live quotes per slug from the browser's own polling
+const PUB = { raw: null, at: 0, idx: null, idxAt: 0 };
+async function clobBook(token) {
+  const b = await (await fetch(`${CLOB}/book?token_id=${encodeURIComponent(token)}`, { cache: "no-store" })).json();
+  const bids = (b.bids || []).map(x => [+x.price, +x.size]).sort((a, c) => c[0] - a[0]).slice(0, 25);
+  const asks = (b.asks || []).map(x => [+x.price, +x.size]).sort((a, c) => a[0] - c[0]).slice(0, 25);
+  const mid = bids.length && asks.length ? (bids[0][0] + asks[0][0]) / 2 : null;
+  return { bids, asks, mid, tick: +(b.tick_size || 0.01), time: Date.now() / 1000 };
+}
+function overlayLive(m) {
+  const q = LIVE.q[m.slug]; if (!q || q.mid == null) return;
+  m.mid = q.mid; m.best_bid = q.bb; m.best_ask = q.ba;
+}
+async function staticSnapshot() {
+  if (!PUB.raw || Date.now() - PUB.at > 60000) {
+    PUB.raw = JSON.stringify(await getJSON("data/snapshot.json")); PUB.at = Date.now();
+  }
+  const snap = JSON.parse(PUB.raw);
+  snap.server_time = Date.now() / 1000;
+  for (const m of (snap.live?.markets || [])) {
+    overlayLive(m);
+    const base = snap.sparks?.[m.slug] || [], last = base.length ? base[base.length - 1][0] : 0;
+    (snap.sparks = snap.sparks || {})[m.slug] = base.concat((LIVE.spark[m.slug] || []).filter(p => p[0] > last));
+  }
+  return snap;
+}
+async function marketIndex() {
+  if (!PUB.idx || Date.now() - PUB.idxAt > 60000) { PUB.idx = await getJSON("data/markets/index.json"); PUB.idxAt = Date.now(); }
+  return PUB.idx;
+}
+async function api(path) {
+  if (!STATIC) return getJSON(path);
+  const u = new URL(path, "http://x"), q = u.searchParams;
+  switch (u.pathname) {
+    case "/api/snapshot": return staticSnapshot();
+    case "/api/equity": return getJSON(`data/equity_${q.get("range") || "24u"}.json`);
+    case "/api/scan": return getJSON("data/scan.json");
+    case "/api/fills": {
+      const r = await getJSON("data/fills.json"), slug = q.get("slug");
+      return slug ? { fills: r.fills.filter(f => f.market === slug) } : r;
+    }
+    case "/api/market": {
+      const f = (await marketIndex())[q.get("slug")];
+      if (!f) return { live: null, candidate: null, history: [], fills: [], settings: null };
+      const d = await getJSON("data/markets/" + encodeURIComponent(f));
+      if (d.live) overlayLive(d.live);
+      return d;
+    }
+    case "/api/book": return clobBook(q.get("token"));
+    case "/api/history": {
+      const r = await (await fetch(`${CLOB}/prices-history?market=${encodeURIComponent(q.get("token"))}&interval=1w&fidelity=60`)).json();
+      return { points: (r.history || []).map(h => [h.t, +h.p]) };
+    }
+  }
+  throw new Error("onbekend pad " + path);
+}
+// browser-side market scan: every 15s read each bot market's book straight from Polymarket
+let livePolling = false;
+async function livePoll() {
+  if (livePolling || document.hidden) return; livePolling = true;
+  try {
+    for (const m of (S.live?.markets || [])) {
+      if (!m.yes_token) continue;
+      try {
+        const b = await clobBook(m.yes_token);
+        if (b.mid == null) continue;
+        const prev = LIVE.q[m.slug]?.mid, now = Date.now() / 1000;
+        LIVE.q[m.slug] = { mid: b.mid, bb: b.bids[0]?.[0], ba: b.asks[0]?.[0] };
+        const sp = LIVE.spark[m.slug] = LIVE.spark[m.slug] || [];
+        sp.push([Math.round(now), b.mid]); if (sp.length > 240) sp.shift();
+        enqueue({ type: "scan", m: m.slug, mid: b.mid, moved: prev != null && Math.abs(prev - b.mid) > 1e-9, ts: now });
+      } catch (e) { /* one market failing is fine */ }
+    }
+    await refreshSnap();
+  } finally { livePolling = false; }
+}
+// replay new bot events from the latest publication
+async function staticEvents() {
+  let r; try { r = await getJSON("data/events.json"); } catch { return; }
+  const first = !S.eventsInit; S.eventsInit = true;
+  S.seen = S.seen || new Set();
+  for (const ev of r.events) {
+    const key = `${ev.ts}|${ev.type}|${ev.m || ""}|${ev.side || ""}|${ev.price ?? ""}`;
+    if (ev.ts < (S.lastTs || 0) || S.seen.has(key)) continue;
+    S.seen.add(key); S.lastTs = ev.ts;
+    if (first) handleEvent(ev, true); else enqueue(ev);
+  }
 }
 
 // ======================================================================
@@ -636,14 +729,16 @@ async function refreshSnap() {
 }
 function botOnline() {
   const L = S.live; if (!L) return false;
-  return serverNow() - L.updated < Math.max(60, 3 * (L.interval || 15) + 20);
+  const lim = STATIC ? 2 * (S.snap?.publish_every || 600) + 300 : Math.max(60, 3 * (L.interval || 15) + 20);
+  return serverNow() - L.updated < lim;
 }
 function updateStatus(serverDown = false) {
   const led = $("#sLed"), txt = $("#sTxt");
-  if (serverDown) { led.className = "led off"; txt.textContent = "dashboard-server niet bereikbaar"; return; }
+  if (serverDown) { led.className = STATIC ? "led warn" : "led off"; txt.textContent = STATIC ? "nog geen gegevens van je Mac" : "dashboard-server niet bereikbaar"; return; }
   const L = S.live;
   if (!L) { led.className = "led warn"; txt.textContent = "wacht op bot…"; return; }
-  if (botOnline()) { led.className = "led on"; txt.textContent = `LIVE · tick ${dur(serverNow() - L.updated)} geleden`; }
+  if (STATIC) { led.className = botOnline() ? "led on" : "led off"; txt.textContent = `ONLINE · bot ${dur(serverNow() - L.updated)} geleden bijgewerkt`; }
+  else if (botOnline()) { led.className = "led on"; txt.textContent = `LIVE · tick ${dur(serverNow() - L.updated)} geleden`; }
   else { led.className = "led off"; txt.textContent = `OFFLINE · laatste tick ${dur(serverNow() - L.updated)} geleden`; }
 }
 
@@ -660,9 +755,9 @@ function updateScanner(st) {
     t.innerHTML = `<span class="neg">Scanner-fout</span>`; bar.classList.add("idle"); right.textContent = "";
   } else {
     const st2 = s.stats || {};
-    t.innerHTML = s.last_done ? `<b>${n0(st2.total)}</b> markten · <b>${(s.candidates || []).length}</b> kansen` : "Eerste scan start zo…";
+    t.innerHTML = s.last_done ? `<b>${n0(st2.total)}</b> markten · <b>${(s.candidates || []).length}</b> kansen` : (STATIC ? "Marktscanner: nog geen resultaten gepubliceerd" : "Eerste scan start zo…");
     bar.classList.add("idle");
-    right.textContent = s.next_at ? `volgende scan ${dur(s.next_at - serverNow())}` : "";
+    right.textContent = s.next_at && s.next_at > serverNow() ? `volgende scan ${dur(s.next_at - serverNow())}` : s.last_done ? `laatste scan ${dur(serverNow() - s.last_done)} geleden` : "";
   }
 }
 
@@ -768,17 +863,19 @@ views.home = {
     const L = S.live, c = $("#cnt"); if (!c) return;
     const C = 2 * Math.PI * 52; c.style.strokeDasharray = C;
     if (!L || !botOnline()) { c.style.strokeDashoffset = C; $("#cNext").textContent = L ? "offline" : "wacht"; return; }
-    const iv = L.interval || 15, el = serverNow() - L.updated, frac = Math.min(1, el / iv);
+    const iv = L.interval || 15, el = STATIC ? (serverNow() - L.updated) % iv : serverNow() - L.updated, frac = Math.min(1, el / iv);
     c.style.strokeDashoffset = C * (1 - frac);
     $("#cNext").textContent = el < iv ? `volgende ${Math.ceil(iv - el)}s` : "bezig…";
     updateStatus();
   },
   update() {
     const L = S.live, snap = S.snap;
-    const ban = $("#offban");
+    const ban = $("#offban"); ban.classList.remove("info");
     if (!L) { ban.classList.add("show"); $("#offtxt").innerHTML = "Nog geen gegevens van de bot. Start de bot (<code>./mac/bot.sh start</code> of <code>python -m mm paper</code>); het dashboard pikt hem vanzelf op."; }
     else if (!botOnline()) { ban.classList.add("show"); $("#offtxt").textContent = `De bot geeft geen teken van leven sinds ${hhmmss(L.updated)}. Controleer met ./mac/bot.sh status.`; }
+    else if (STATIC) { ban.classList.add("show", "info"); $("#offtxt").textContent = `Online versie: koersen en orderboeken zijn live, de cijfers van de bot worden elke ~${Math.round((S.snap?.publish_every || 600) / 60)} min door je Mac bijgewerkt (laatst om ${hhmm(S.snap?.published_at || L.updated)}).`; }
     else ban.classList.remove("show");
+    if (STATIC && !L) $("#offtxt").textContent = "Nog geen gegevens gepubliceerd. Start op je Mac: ./mac/bot.sh pages";
     if (L) {
       $("#hEq").textContent = usd(L.equity + L.rewards);
       const tot = L.pnl_total, pc = tot / (L.start_cash || 1);
@@ -792,8 +889,8 @@ views.home = {
       $("#kFills").textContent = n0(L.n_fills);
       if (up > 3600) { set("#kDay", L.pnl_total / up * 86400, true); $("#kDayH").textContent = up < 3 * 86400 ? "extrapolatie, nog onbetrouwbaar" : "extrapolatie"; }
       else { $("#kDay").textContent = "–"; $("#kDayH").textContent = "pas na 1 uur"; }
-      $("#cTick").textContent = n0(L.ticks);
-      $("#pmSub").textContent = `${L.markets.length} bot-markten · elke ${L.interval}s gescand`;
+      $("#cTick").textContent = n0(STATIC && botOnline() ? L.ticks + Math.floor((serverNow() - L.updated) / (L.interval || 15)) : L.ticks);
+      $("#pmSub").textContent = STATIC ? `${L.markets.length} bot-markten · live koersen elke 15s` : `${L.markets.length} bot-markten · elke ${L.interval}s gescand`;
       const chip = $("#botChip"), anyPause = L.markets.some(m => m.status === "pauze");
       chip.innerHTML = !botOnline() ? `<span class="led off" style="width:6px;height:6px"></span>offline` : anyPause ? `<span class="led warn" style="width:6px;height:6px"></span>deels pauze` : `<span class="led on" style="width:6px;height:6px"></span>actief`;
       // market rows (rebuild only when set changes)
@@ -867,7 +964,7 @@ views.polymarket = {
       <td class="r num">${n0(m.days_left)}</td><td>${statusHTML(m.status)}</td></tr>`).join("") || `<tr><td colspan="10"><div class="empty">Geen gegevens van de bot.</div></td></tr>`;
     this.bindRows(bm);
     api("/api/scan").then(full => {
-      const tb = $("#cands"); if (!tb) return;
+      const tb = $("#cands"); if (!tb || !$("#rej")) return;
       tb.innerHTML = (full.candidates || []).map(c => `<tr class="click" data-slug="${esc(c.slug)}">
         <td class="num muted">${c.rank}</td><td class="wrap">${esc(shortQ(c.question))}${c.active ? '<span class="tag act">actief</span>' : ""}${c.new ? '<span class="tag new">nieuw</span>' : ""}</td>
         <td class="r num">${usd(c.reward_day)}</td><td class="r num">${usd(c.per_100)}</td><td class="r num">${pct(c.share)}</td>
@@ -909,7 +1006,7 @@ views.market = {
   async update() {
     const now = Date.now(); if (this.last && now - this.last < 15000) return; this.last = now;
     let d; try { d = await api(`/api/market?slug=${encodeURIComponent(this.slug)}`); } catch { return; }
-    if (!$("#mk")) return;
+    if (S.view !== this || !$("#mk")) return;
     this.d = d;
     const m = d.live, c = d.candidate, q = m?.question || c?.question || this.slug;
     $("#mq").textContent = shortQ(q);
@@ -938,6 +1035,7 @@ views.market = {
     let pts = d.history;
     if (pts.length < 3 && ytok) { try { pts = (await api(`/api/history?token=${ytok}`)).points; $("#mnote").textContent = "Uurkoersen van Polymarket (afgelopen week)."; } catch { pts = []; } }
     else $("#mnote").textContent = "Gemeten door de bot (1 punt per minuut).";
+    if (S.view !== this || !$("#mchart")) return;  // user navigated away while loading
     const markers = d.fills.map(f => ({ t: Date.parse(f.time.replace(" ", "T")) / 1000, v: f.price, color: f.side === "bid" ? COLORS.fillBuy : COLORS.fillSell, shape: f.side === "bid" ? "up" : "down", label: `${f.side === "bid" ? "Koop" : "Verkoop"} ${n0(f.size)} @ ${cents(f.price)}` }));
     lineChart($("#mchart"), { series: [{ name: "Middenprijs", color: COLORS.total, pts }], markers, markerLegend: markers.length ? [{ name: "Koop-fill", color: COLORS.fillBuy }, { name: "Verkoop-fill", color: COLORS.fillSell }] : [], yfmt: cents, height: 260, minSpan: 0.02, aria: "Middenprijs over tijd", empty: "Nog geen koersgeschiedenis" });
     $("#mfills").innerHTML = d.fills.map(f => `<tr><td class="num">${esc(f.time)}</td><td><span class="dot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${f.side === "bid" ? COLORS.fillBuy : COLORS.fillSell}"></span> ${f.side === "bid" ? "koop JA" : "verkoop JA"}</td><td class="r num">${cents(f.price)}</td><td class="r num">${n0(f.size)}</td><td class="muted">${esc(f.reason)}</td></tr>`).join("") || `<tr><td colspan="5"><div class="empty">Nog geen fills in deze markt.</div></td></tr>`;
@@ -946,6 +1044,7 @@ views.market = {
   async loadBook() {
     if (!this.token || !$("#mbook")) return;
     let b; try { b = await api(`/api/book?token=${this.token}`); } catch { return; }
+    if (S.view !== this || !$("#mbook")) return;
     const m = this.d?.live, mx = Math.max(1, ...b.bids.slice(0, 10).map(x => x[1]), ...b.asks.slice(0, 10).map(x => x[1]));
     const near = (a, p) => p != null && Math.abs(a - p) < 1e-6;
     const row = (side, [p, s]) => {
@@ -1062,9 +1161,17 @@ addEventListener("hashchange", route);
 (async function init() {
   await refreshSnap();
   route();
-  await pollEvents();
-  setInterval(pollEvents, 1000);
-  setInterval(refreshSnap, 5000);
+  if (STATIC) {
+    await staticEvents();
+    livePoll();
+    setInterval(staticEvents, 60000);
+    setInterval(livePoll, 15000);
+    setInterval(refreshSnap, 20000);
+  } else {
+    await pollEvents();
+    setInterval(pollEvents, 1000);
+    setInterval(refreshSnap, 5000);
+  }
 })();
 </script>
 </body>

@@ -41,6 +41,20 @@ python -m mm dashboard --host 0.0.0.0   # ook bereikbaar vanaf je telefoon in je
 ```
 Op de Mac start het dashboard automatisch mee met `./mac/bot.sh install`. `./mac/bot.sh dashboard` opent het en toont het adres voor je telefoon.
 
+### Online via GitHub Pages
+Het dashboard is ook online te bekijken op **https://alicetin1905-ux.github.io/PolyMaker/**, overal vandaan, ook via 4G.
+- **Koersen en orderboeken zijn live:** de pagina haalt ze zelf bij Polymarket op, elke 15 seconden.
+- **De cijfers van de bot lopen ~10 minuten achter:** je Mac publiceert ze naar de branch `gh-pages`. GitHub bouwt een site maximaal ~10 keer per uur opnieuw.
+- **De pagina is openbaar.** Er staat alleen paper-tradingdata op, geen sleutels of wachtwoorden.
+
+Zo zet je het aan (eenmalig):
+1. Op je Mac: `./mac/bot.sh pages`
+   - Vraagt git om in te loggen? Gebruikersnaam = je GitHub-naam, wachtwoord = een token: [nieuw token](https://github.com/settings/personal-access-tokens/new), alleen voor deze repo, met *Contents: Read and write*.
+   - macOS bewaart het token in de sleutelhanger.
+2. Op GitHub: **Settings → Pages → Source: Deploy from a branch → Branch: `gh-pages` / (root) → Save**.
+
+Uitzetten: `./mac/bot.sh pages-off`. Hoe vaak je Mac publiceert stel je in met `PAGES_EVERY=15 ./mac/bot.sh apply`.
+
 ## 24/7 op een Mac (mini)
 ```bash
 git clone https://github.com/alicetin1905-ux/PolyMaker.git && cd PolyMaker
@@ -53,6 +67,7 @@ De bot start dan automatisch, ook na een herstart of crash, en gaat verder waar 
 | `./mac/bot.sh status` | draait hij? + instellingen + samenvatting (fills, P&L, beloningen, per dag) |
 | `./mac/bot.sh log` | live meekijken |
 | `./mac/bot.sh dashboard` | dashboard openen + adres voor je telefoon |
+| `./mac/bot.sh pages` / `pages-off` | online versie op GitHub Pages aan/uit |
 | `./mac/bot.sh config` | huidige instellingen tonen |
 | `./mac/bot.sh apply` | gewijzigde SIZE / MAX_POS / SPREAD toepassen, resultaten lopen door |
 | `./mac/bot.sh stop` / `start` | pauzeren / hervatten |
@@ -72,6 +87,7 @@ Je geeft alleen op wat je wilt wijzigen. Instellingen worden onthouden in `bot.c
 | `SPREAD` | 0.5 | afstand tot mid als deel van de beloningsband (0.05-1.0): hoger = veiliger, minder beloning | apply |
 | `DASH_PORT` | 8787 | poort van het dashboard | apply |
 | `DASH_LAN` | 1 | 1 = dashboard ook via wifi (telefoon), 0 = alleen deze Mac | apply |
+| `PAGES_EVERY` | 10 | online versie elke N minuten bijwerken (min. 6) | apply |
 
 \* Eist een markt meer aandelen voor de beloning (bijvoorbeeld 100), dan gebruikt de bot dat minimum.
 

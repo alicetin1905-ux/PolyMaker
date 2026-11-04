@@ -5,6 +5,8 @@
 #   ./mac/bot.sh status      draait hij? + instellingen + samenvatting tot nu toe
 #   ./mac/bot.sh log         live meekijken (Ctrl-C stopt alleen het meekijken)
 #   ./mac/bot.sh dashboard   dashboard openen in je browser (adres voor je telefoon staat erbij)
+#   ./mac/bot.sh pages       online versie op GitHub Pages aanzetten (Mac publiceert automatisch)
+#   ./mac/bot.sh pages-off   automatisch publiceren naar GitHub Pages stoppen
 #   ./mac/bot.sh config      huidige instellingen tonen
 #   ./mac/bot.sh apply       nieuwe SIZE/MAX_POS/SPREAD toepassen, resultaten blijven doorlopen
 #   ./mac/bot.sh stop        bot stoppen (blijft uit tot 'start')
@@ -21,23 +23,26 @@
 #   MIN_DAYS=30     sla markten over die binnen N dagen eindigen -> werkt bij install/reset
 #   DASH_PORT=8787  poort van het dashboard                  -> werkt ook met apply
 #   DASH_LAN=1      1 = dashboard ook via je wifi (telefoon), 0 = alleen deze Mac -> werkt ook met apply
+#   PAGES_EVERY=10  online versie elke N minuten bijwerken (minimaal 6) -> werkt ook met apply
 # Voorbeeld:  SIZE=30 MAX_POS=100 ./mac/bot.sh apply
 set -euo pipefail
 
 LABEL="local.polymarket-mm"
 DLABEL="local.polymarket-mm-dashboard"
+PLABEL="local.polymarket-mm-pages"
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
 VENV="$DIR/.venv"
 LOGS="$DIR/logs"
 CONF="$DIR/bot.conf"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 DPLIST="$HOME/Library/LaunchAgents/$DLABEL.plist"
+PPLIST="$HOME/Library/LaunchAgents/$PLABEL.plist"
 DOMAIN="gui/$(id -u)"
-KEYS="BANKROLL MARKETS SIZE MAX_POS SPREAD MIN_DAYS DASH_PORT DASH_LAN"
+KEYS="BANKROLL MARKETS SIZE MAX_POS SPREAD MIN_DAYS DASH_PORT DASH_LAN PAGES_EVERY"
 
 # ---- settings: defaults < bot.conf < environment --------------------------
 for k in $KEYS; do eval "ENV_$k=\"\${$k:-}\""; done
-BANKROLL=1000; MARKETS=6; SIZE=50; MAX_POS=150; SPREAD=0.5; MIN_DAYS=30; DASH_PORT=8787; DASH_LAN=1
+BANKROLL=1000; MARKETS=6; SIZE=50; MAX_POS=150; SPREAD=0.5; MIN_DAYS=30; DASH_PORT=8787; DASH_LAN=1; PAGES_EVERY=10
 # shellcheck disable=SC1090
 [ -f "$CONF" ] && . "$CONF"
 for k in $KEYS; do
@@ -53,6 +58,7 @@ validate() {
   if ! [[ "$MARKETS" =~ ^[1-9][0-9]*$ ]]; then echo "MARKETS moet een heel getal >= 1 zijn"; exit 1; fi
   if ! [[ "$DASH_PORT" =~ ^[0-9]+$ ]] || [ "$DASH_PORT" -lt 1024 ] || [ "$DASH_PORT" -gt 65535 ]; then echo "DASH_PORT moet tussen 1024 en 65535 liggen"; exit 1; fi
   if [ "$DASH_LAN" != "0" ] && [ "$DASH_LAN" != "1" ]; then echo "DASH_LAN moet 0 of 1 zijn"; exit 1; fi
+  awk -v s="$PAGES_EVERY" 'BEGIN { exit !(s >= 6) }' || { echo "PAGES_EVERY moet minimaal 6 (minuten) zijn: GitHub Pages bouwt max ~10x per uur"; exit 1; }
   awk -v s="$SPREAD" 'BEGIN { exit !(s >= 0.05 && s <= 1.0) }' || { echo "SPREAD moet tussen 0.05 en 1.0 liggen"; exit 1; }
   awk -v s="$SIZE" 'BEGIN { exit !(s >= 5) }' || { echo "SIZE moet minimaal 5 zijn (Polymarket-minimum)"; exit 1; }
   awk -v s="$MAX_POS" -v z="$SIZE" 'BEGIN { exit !(s >= z) }' || { echo "MAX_POS moet minimaal SIZE zijn"; exit 1; }
@@ -120,6 +126,43 @@ PLIST_END
 dash_loaded() { launchctl print "$DOMAIN/$DLABEL" >/dev/null 2>&1; }
 dash_start() { if [ -f "$DPLIST" ] && ! dash_loaded; then launchctl bootstrap "$DOMAIN" "$DPLIST"; fi; }
 dash_stop() { if dash_loaded; then launchctl bootout "$DOMAIN/$DLABEL" || true; fi; }
+
+pages_repo() {  # owner/repo from the origin remote
+  git -C "$DIR" remote get-url origin 2>/dev/null | sed -E 's#^(https://|git@)github\.com[:/]##; s#\.git$##; s#/$##'
+}
+pages_url() { local r; r="$(pages_repo)"; echo "https://$(echo "${r%%/*}" | tr '[:upper:]' '[:lower:]').github.io/${r#*/}/"; }
+
+write_pages_plist() {
+  mkdir -p "$HOME/Library/LaunchAgents" "$LOGS"
+  cat > "$PPLIST" <<PLIST_END
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>$PLABEL</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$VENV/bin/python</string><string>-m</string><string>mm</string><string>publish</string>
+    <string>--log-dir</string><string>$LOGS</string>
+    <string>--site-dir</string><string>$DIR/.pages</string>
+    <string>--every</string><string>$PAGES_EVERY</string>
+  </array>
+  <key>WorkingDirectory</key><string>$DIR</string>
+  <key>EnvironmentVariables</key><dict><key>PYTHONUNBUFFERED</key><string>1</string><key>GIT_TERMINAL_PROMPT</key><string>0</string></dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>120</integer>
+  <key>StandardOutPath</key><string>$LOGS/pages.log</string>
+  <key>StandardErrorPath</key><string>$LOGS/pages.err.log</string>
+</dict>
+</plist>
+PLIST_END
+}
+
+pages_loaded() { launchctl print "$DOMAIN/$PLABEL" >/dev/null 2>&1; }
+pages_start() { if [ -f "$PPLIST" ] && ! pages_loaded; then launchctl bootstrap "$DOMAIN" "$PPLIST"; fi; }
+pages_stop() { if pages_loaded; then launchctl bootout "$DOMAIN/$PLABEL" || true; fi; }
+pages_refresh() { if [ -f "$PPLIST" ]; then pages_stop; write_pages_plist; pages_start; fi; }
 
 is_loaded() { launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1; }
 
@@ -208,15 +251,44 @@ case "${1:-}" in
     echo
     start
     dash_stop; write_dash_plist; dash_start
+    pages_refresh
     ;;
-  start) start; dash_start ;;
-  stop) stop; dash_stop ;;
+  start) start; dash_start; pages_start ;;
+  stop) stop; dash_stop; pages_stop ;;
+  pages)
+    validate
+    [ -x "$VENV/bin/python" ] || { echo "Eerst installeren: ./mac/bot.sh install"; exit 1; }
+    save_conf
+    echo "Online versie publiceren naar GitHub Pages (branch gh-pages)..."
+    echo "Vraagt git om inloggegevens? Gebruikersnaam = je GitHub-naam, wachtwoord = een token:"
+    echo "  https://github.com/settings/personal-access-tokens/new"
+    echo "  -> Repository access: alleen $(pages_repo)  -> Permissions: Contents = Read and write"
+    echo
+    if ! (cd "$DIR" && "$VENV/bin/python" -m mm publish --once --log-dir "$LOGS" --site-dir "$DIR/.pages"); then
+      echo; echo "Publiceren lukte niet. Controleer je token en probeer opnieuw: ./mac/bot.sh pages"; exit 1
+    fi
+    pages_stop; write_pages_plist; pages_start
+    echo
+    echo "Gelukt. Je Mac publiceert nu elke $PAGES_EVERY minuten automatisch."
+    echo
+    echo "Eenmalig op GitHub aanzetten (als je dat nog niet deed):"
+    echo "  https://github.com/$(pages_repo)/settings/pages"
+    echo "  -> Source: 'Deploy from a branch'  -> Branch: gh-pages, map: / (root)  -> Save"
+    echo
+    echo "Daarna (na ~1 minuut) bereikbaar op:  $(pages_url)"
+    ;;
+  pages-off)
+    pages_stop
+    rm -f "$PPLIST"
+    echo "Automatisch publiceren gestopt. De laatste versie blijft online tot je GitHub Pages uitzet."
+    ;;
   status)
     if is_loaded; then echo "Status: DRAAIT"; else echo "Status: GESTOPT"; fi
     echo
     show_conf
     echo
     if dash_loaded; then echo "Dashboard: DRAAIT"; dash_urls; else echo "Dashboard: GESTOPT"; fi
+    if pages_loaded; then echo "Online versie: AAN (elke $PAGES_EVERY min) -> $(pages_url)"; if [ -s "$LOGS/pages.log" ]; then echo "  laatst: $(tail -n 1 "$LOGS/pages.log")"; fi; else echo "Online versie: UIT (aanzetten: ./mac/bot.sh pages)"; fi
     echo
     (cd "$DIR" && "$VENV/bin/python" -m mm report --log-dir "$LOGS")
     if [ -s "$LOGS/bot.err.log" ]; then echo; echo "Laatste fouten:"; tail -n 5 "$LOGS/bot.err.log"; fi
@@ -241,15 +313,17 @@ case "${1:-}" in
     echo
     start
     dash_stop; write_dash_plist; dash_start
+    pages_refresh
     ;;
   uninstall)
     stop || true
     dash_stop
-    rm -f "$PLIST" "$DPLIST"
+    pages_stop
+    rm -f "$PLIST" "$DPLIST" "$PPLIST"
     echo "Automatisch starten verwijderd. Resultaten staan nog in $LOGS"
     ;;
   *)
-    sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'
     exit 1
     ;;
 esac

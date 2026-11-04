@@ -51,6 +51,14 @@ def main(argv: list[str] | None = None) -> int:
     d.add_argument("--port", type=int, default=8787)
     d.add_argument("--scan-every", type=float, default=30, help="marktscanner elke N minuten (0 = uit)")
 
+    pb = sub.add_parser("publish", help="online versie van het dashboard naar GitHub Pages sturen")
+    pb.add_argument("--log-dir", default="logs")
+    pb.add_argument("--site-dir", default=".pages", help="lokale map voor de gh-pages branch")
+    pb.add_argument("--remote", default=None, help="git-remote (standaard: origin van deze repo)")
+    pb.add_argument("--branch", default="gh-pages")
+    pb.add_argument("--every", type=float, default=10, help="elke N minuten publiceren (minimaal 6)")
+    pb.add_argument("--once", action="store_true", help="één keer publiceren en stoppen")
+
     r = sub.add_parser("report", help="samenvatting van een paper-run")
     r.add_argument("--log-dir", default="logs")
 
@@ -59,6 +67,11 @@ def main(argv: list[str] | None = None) -> int:
         d = a.log_dir
         print_report(os.path.join(d, "state.json"), os.path.join(d, "equity.csv"), os.path.join(d, "fills.csv"))
         return 0
+
+    if a.cmd == "publish":
+        from .publish import run
+
+        return run(a.log_dir, a.site_dir, a.remote, a.branch, a.every * 60, a.once)
 
     api = PolymarketAPI()
     scfg = StrategyConfig(order_size=a.size, spread_frac=a.spread_frac, max_position=a.max_pos)

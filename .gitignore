@@ -5,3 +5,4 @@ state*.json
 .venv/
 archief/
 bot.conf
+.pages/
