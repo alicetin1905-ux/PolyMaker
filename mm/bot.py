@@ -23,6 +23,7 @@ class BotConfig:
     cooldown: float = 300.0  # seconds to stay out after a jump
     stop_days_before_end: float = 2.0
     log_dir: str = "logs"
+    print_every: int = 1  # print status every N ticks
 
 
 class PaperBot:
@@ -37,6 +38,7 @@ class PaperBot:
         self.equity_path = os.path.join(bcfg.log_dir, "equity.csv")
         self.state_path = os.path.join(bcfg.log_dir, "state.json")
         self._n_logged_fills = 0
+        self._ticks = 0
         for path, hdr in (
             (self.fills_path, ["time", "market", "side", "price", "size", "reason"]),
             (self.equity_path, ["time", "cash", "inventory", "rewards", "equity", "pnl_trading", "pnl_total"]),
@@ -113,10 +115,17 @@ class PaperBot:
         with open(self.equity_path, "a", newline="") as f:
             csv.writer(f).writerow([int(now), round(self.ex.cash, 4), round(inv, 4), round(rew, 4), round(eq, 4),
                                     round(pnl_trading, 4), round(pnl_trading + rew, 4)])
-        with open(self.state_path, "w") as f:
-            json.dump(self.ex.to_dict(), f, indent=1)
+        state = self.ex.to_dict()
+        state["markets"] = [m.slug for m in self.markets]
+        tmp = self.state_path + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(state, f, indent=1)
+        os.replace(tmp, self.state_path)  # atomic: no corrupt state if the Mac loses power
+        self._ticks += 1
+        if (self._ticks - 1) % max(1, self.bcfg.print_every):
+            return
         print(
-            f"[{time.strftime('%H:%M:%S')}] kas ${self.ex.cash:8.2f} | inventaris ${inv:7.2f} | "
+            f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] kas ${self.ex.cash:8.2f} | inventaris ${inv:7.2f} | "
             f"handel P&L ${pnl_trading:+7.2f} | beloning ${rew:6.3f} | totaal ${pnl_trading + rew:+7.2f}"
         )
         for m in self.markets:
@@ -134,8 +143,8 @@ class PaperBot:
             t0 = time.time()
             try:
                 self.tick()
-            except RuntimeError as e:
-                print(f"  ! tick failed: {e}")
+            except Exception as e:  # keep running on unexpected API data / network trouble
+                print(f"  ! tick mislukt: {type(e).__name__}: {e}")
             while self.running and time.time() - t0 < self.bcfg.interval:
                 time.sleep(0.5)
         print("\nGestopt. Samenvatting:")

@@ -41,7 +41,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--interval", type=float, default=15)
     p.add_argument("--hours", type=float, default=None)
     p.add_argument("--log-dir", default="logs")
-    p.add_argument("--resume", action="store_true", help="ga verder met kas/posities uit logs/state.json")
+    p.add_argument("--resume", action="store_true", help="ga verder met kas/posities/markten uit logs/state.json")
+    p.add_argument("--print-every", type=int, default=1, help="status printen elke N ticks (fills altijd)")
 
     r = sub.add_parser("report", help="samenvatting van een paper-run")
     r.add_argument("--log-dir", default="logs")
@@ -71,15 +72,23 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     # paper
-    per_market = a.bankroll / max(1, a.markets if not a.slug else len(a.slug))
-    if a.slug:
+    state_path = os.path.join(a.log_dir, "state.json")
+    saved = None
+    if a.resume and os.path.exists(state_path):
+        with open(state_path) as f:
+            saved = json.load(f)
+    slugs = a.slug or (saved or {}).get("markets") or []
+    per_market = a.bankroll / max(1, len(slugs) or a.markets)
+    markets = []
+    if slugs:
         allm = {m.slug: m for m in api.reward_markets()}
-        missing = [s_ for s_ in a.slug if s_ not in allm]
+        missing = [s_ for s_ in slugs if s_ not in allm]
         if missing:
-            print(f"Niet gevonden (of geen rewards): {missing}")
+            print(f"Niet (meer) gevonden of geen rewards, overgeslagen: {missing}")
+        markets = [allm[s_] for s_ in slugs if s_ in allm]
+        if a.slug and missing:
             return 1
-        markets = [allm[s_] for s_ in a.slug]
-    else:
+    if not markets:
         print("Scannen naar markten...")
         cands = scan(api, scfg, filters(per_market), want=a.markets)
         print_table(cands, a.markets)
@@ -89,13 +98,12 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     ex = PaperExchange(a.bankroll)
-    state = os.path.join(a.log_dir, "state.json")
-    if a.resume and os.path.exists(state):
-        with open(state) as f:
-            ex.load_dict(json.load(f))
-        print(f"Hervat: kas ${ex.cash:.2f}")
-    print(f"\nPAPER TRADING met ${a.bankroll:.0f} nepgeld op {len(markets)} markt(en). Ctrl-C om te stoppen.\n")
-    PaperBot(api, markets, ex, scfg, BotConfig(interval=a.interval, hours=a.hours, log_dir=a.log_dir)).run()
+    if saved:
+        ex.load_dict(saved)
+        print(f"Hervat: kas ${ex.cash:.2f}, markten: {[m.slug for m in markets]}")
+    print(f"\nPAPER TRADING met ${ex.start_cash:.0f} nepgeld op {len(markets)} markt(en). Ctrl-C om te stoppen.\n")
+    bcfg = BotConfig(interval=a.interval, hours=a.hours, log_dir=a.log_dir, print_every=a.print_every)
+    PaperBot(api, markets, ex, scfg, bcfg).run()
     return 0
 
 

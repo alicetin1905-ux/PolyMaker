@@ -21,6 +21,27 @@ python -m unittest discover -s tests    # tests
 Belangrijke opties: `--size` (shares per kant), `--spread-frac` (afstand tot mid),
 `--max-pos` (max positie per markt), `--markets` (aantal markten), `--slug` (specifieke markt).
 
+## 24/7 op een Mac (mini)
+```bash
+git clone <repo-url> && cd <repo-map>
+BANKROLL=1000 MARKETS=6 ./mac/bot.sh install   # eenmalig
+```
+De bot start dan automatisch, ook na een herstart of crash, en gaat verder waar hij was.
+
+| Commando | Doet |
+|---|---|
+| `./mac/bot.sh status` | draait hij? + samenvatting (fills, P&L, beloningen, per dag) |
+| `./mac/bot.sh log` | live meekijken |
+| `./mac/bot.sh stop` / `start` | pauzeren / hervatten |
+| `./mac/bot.sh reset` | oude resultaten archiveren en opnieuw beginnen met nieuwe markten |
+| `./mac/bot.sh uninstall` | automatisch starten verwijderen |
+
+Zet in **Systeeminstellingen** het volgende aan:
+- **Energie**: "Voorkom automatische sluimerstand" en "Start automatisch op na stroomstoring"
+- **Gebruikers**: automatisch inloggen
+
+Python 3.9 of nieuwer is nodig. Heb je dat nog niet: `xcode-select --install`.
+
 ## Hoe het werkt
 1. **Scanner**: zoekt markten waar Polymarket dagelijkse liquidity rewards betaalt en
    schat jouw aandeel in die pool (`$/dag` en `$/dag per $100 kapitaal`).
