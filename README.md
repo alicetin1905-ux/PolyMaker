@@ -1,11 +1,11 @@
-# Polymarket market-making bot (paper trading)
+# PolyMaker: Polymarket market-making bot (paper trading)
 
 Simuleert market making op Polymarket met **nepgeld** op **live** marktdata.
 Er worden geen echte orders geplaatst en er is geen account of API-sleutel nodig.
 
 ## Installeren
 ```bash
-cd polymarket_mm
+git clone https://github.com/alicetin1905-ux/PolyMaker.git && cd PolyMaker
 pip install -r requirements.txt
 ```
 
@@ -23,7 +23,7 @@ Belangrijke opties: `--size` (shares per kant), `--spread-frac` (afstand tot mid
 
 ## 24/7 op een Mac (mini)
 ```bash
-git clone <repo-url> && cd <repo-map>
+git clone https://github.com/alicetin1905-ux/PolyMaker.git && cd PolyMaker
 BANKROLL=1000 MARKETS=6 ./mac/bot.sh install   # eenmalig
 ```
 De bot start dan automatisch, ook na een herstart of crash, en gaat verder waar hij was.
