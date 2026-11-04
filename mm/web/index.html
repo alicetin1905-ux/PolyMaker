@@ -737,7 +737,10 @@ function updateStatus(serverDown = false) {
   if (serverDown) { led.className = STATIC ? "led warn" : "led off"; txt.textContent = STATIC ? "nog geen gegevens van je Mac" : "dashboard-server niet bereikbaar"; return; }
   const L = S.live;
   if (!L) { led.className = "led warn"; txt.textContent = "wacht op bot…"; return; }
-  if (STATIC) { led.className = botOnline() ? "led on" : "led off"; txt.textContent = `ONLINE · bot ${dur(serverNow() - L.updated)} geleden bijgewerkt`; }
+  if (STATIC) {
+    const on = botOnline(); led.className = on ? "led on" : "led off";
+    txt.textContent = on ? `ONLINE · bot ${dur(serverNow() - L.updated)} geleden bijgewerkt` : `OFFLINE · bot laatst gezien ${dur(serverNow() - L.updated)} geleden`;
+  }
   else if (botOnline()) { led.className = "led on"; txt.textContent = `LIVE · tick ${dur(serverNow() - L.updated)} geleden`; }
   else { led.className = "led off"; txt.textContent = `OFFLINE · laatste tick ${dur(serverNow() - L.updated)} geleden`; }
 }
@@ -872,7 +875,9 @@ views.home = {
     const L = S.live, snap = S.snap;
     const ban = $("#offban"); ban.classList.remove("info");
     if (!L) { ban.classList.add("show"); $("#offtxt").innerHTML = "Nog geen gegevens van de bot. Start de bot (<code>./mac/bot.sh start</code> of <code>python -m mm paper</code>); het dashboard pikt hem vanzelf op."; }
-    else if (!botOnline()) { ban.classList.add("show"); $("#offtxt").textContent = `De bot geeft geen teken van leven sinds ${hhmmss(L.updated)}. Controleer met ./mac/bot.sh status.`; }
+    else if (!botOnline()) { ban.classList.add("show"); $("#offtxt").textContent = STATIC
+      ? `De bot draait niet: laatste gegevens van ${ddmm(L.updated)} ${hhmm(L.updated)}. Koersen hieronder zijn wel live. Op je Mac: ./mac/bot.sh status`
+      : `De bot geeft geen teken van leven sinds ${hhmmss(L.updated)}. Controleer met ./mac/bot.sh status.`; }
     else if (STATIC) { ban.classList.add("show", "info"); $("#offtxt").textContent = `Online versie: koersen en orderboeken zijn live, de cijfers van de bot worden elke ~${Math.round((S.snap?.publish_every || 600) / 60)} min door je Mac bijgewerkt (laatst om ${hhmm(S.snap?.published_at || L.updated)}).`; }
     else ban.classList.remove("show");
     if (STATIC && !L) $("#offtxt").textContent = "Nog geen gegevens gepubliceerd. Start op je Mac: ./mac/bot.sh pages";
