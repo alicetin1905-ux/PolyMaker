@@ -44,6 +44,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--resume", action="store_true", help="ga verder met kas/posities/markten uit logs/state.json")
     p.add_argument("--print-every", type=int, default=1, help="status printen elke N ticks (fills altijd)")
 
+    d = sub.add_parser("dashboard", help="web-dashboard (live) voor de bot")
+    strat_args(d)
+    d.add_argument("--log-dir", default="logs")
+    d.add_argument("--host", default="127.0.0.1", help="0.0.0.0 = ook bereikbaar vanaf je telefoon in je wifi")
+    d.add_argument("--port", type=int, default=8787)
+    d.add_argument("--scan-every", type=float, default=30, help="marktscanner elke N minuten (0 = uit)")
+
     r = sub.add_parser("report", help="samenvatting van een paper-run")
     r.add_argument("--log-dir", default="logs")
 
@@ -62,6 +69,12 @@ def main(argv: list[str] | None = None) -> int:
             max_daily_vol_c=a.max_vol, max_daily_jump_c=a.max_jump,
             exclude_date_windows=not a.allow_risky, exclude_sports_live=not a.allow_risky,
         )
+
+    if a.cmd == "dashboard":
+        from .dashboard import serve
+
+        serve(a.log_dir, a.host, a.port, scfg, filters(None), a.scan_every * 60)
+        return 0
 
     if a.cmd == "scan":
         print("Markten met liquidity rewards ophalen...")

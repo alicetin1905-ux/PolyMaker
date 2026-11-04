@@ -83,11 +83,13 @@ class PolymarketAPI:
         raise RuntimeError(f"API request failed: {url}: {last}")
 
     # ---- markets -------------------------------------------------------
-    def reward_markets(self, max_pages: int = 50) -> list[Market]:
+    def reward_markets(self, max_pages: int = 50, on_page=None) -> list[Market]:
         """All active markets that currently pay liquidity rewards."""
         out: list[Market] = []
         cursor = ""
-        for _ in range(max_pages):
+        for page in range(max_pages):
+            if on_page:
+                on_page(page, len(out))
             d = self._req("GET", f"{CLOB}/sampling-markets", params={"next_cursor": cursor})
             for m in d.get("data", []):
                 mk = parse_market(m)
@@ -99,9 +101,11 @@ class PolymarketAPI:
         return out
 
     # ---- order books ---------------------------------------------------
-    def books(self, token_ids: list[str]) -> dict[str, Book]:
+    def books(self, token_ids: list[str], on_chunk=None) -> dict[str, Book]:
         res: dict[str, Book] = {}
         for i in range(0, len(token_ids), 50):
+            if on_chunk:
+                on_chunk(i, len(token_ids))
             chunk = token_ids[i : i + 50]
             d = self._req("POST", f"{CLOB}/books", json=[{"token_id": t} for t in chunk])
             for b in d:

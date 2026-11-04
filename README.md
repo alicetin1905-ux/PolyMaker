@@ -21,6 +21,26 @@ python -m unittest discover -s tests    # tests
 Belangrijke opties: `--size` (shares per kant), `--spread-frac` (afstand tot mid),
 `--max-pos` (max positie per markt), `--markets` (aantal markten), `--slug` (specifieke markt).
 
+## Dashboard
+Een live webdashboard naast de bot:
+- **Kopstuk**: saldo, resultaat, beloningen, kas, posities, fills en looptijd.
+- **Polymarket-tegel**: de bot-markten worden continu gescand. Een led licht op bij elke scan, en de marktscanner zoekt op de achtergrond naar nieuwe kansen.
+- **Draden met led-pulsen** naar de BOT-tegel:
+  - *data*: elke scan
+  - *signaal*: koersbeweging of handel; fills in groen of oranje, noodstops in geel
+  - *kansen*: wat de scanner vindt
+- **BOT-tegel**: tick-ring met aftelling, orders per markt en positiebalkjes.
+- **Klik op een tegel** voor een eigen pagina:
+  - Polymarket: markten, kansen en waarom markten afvallen
+  - Per markt: koersgrafiek met fills en het live orderboek met jouw orders
+  - Bot: resultaatgrafiek, posities, instellingen, fills en logboek
+
+```bash
+python -m mm dashboard                  # http://localhost:8787
+python -m mm dashboard --host 0.0.0.0   # ook bereikbaar vanaf je telefoon in je wifi
+```
+Op de Mac start het dashboard automatisch mee met `./mac/bot.sh install`. `./mac/bot.sh dashboard` opent het en toont het adres voor je telefoon.
+
 ## 24/7 op een Mac (mini)
 ```bash
 git clone https://github.com/alicetin1905-ux/PolyMaker.git && cd PolyMaker
@@ -32,6 +52,7 @@ De bot start dan automatisch, ook na een herstart of crash, en gaat verder waar 
 |---|---|
 | `./mac/bot.sh status` | draait hij? + instellingen + samenvatting (fills, P&L, beloningen, per dag) |
 | `./mac/bot.sh log` | live meekijken |
+| `./mac/bot.sh dashboard` | dashboard openen + adres voor je telefoon |
 | `./mac/bot.sh config` | huidige instellingen tonen |
 | `./mac/bot.sh apply` | gewijzigde SIZE / MAX_POS / SPREAD toepassen, resultaten lopen door |
 | `./mac/bot.sh stop` / `start` | pauzeren / hervatten |
@@ -49,6 +70,8 @@ Je geeft alleen op wat je wilt wijzigen. Instellingen worden onthouden in `bot.c
 | `SIZE` | 50 | aandelen per order (per kant)* | apply |
 | `MAX_POS` | 150 | max netto positie per markt (aandelen) | apply |
 | `SPREAD` | 0.5 | afstand tot mid als deel van de beloningsband (0.05-1.0): hoger = veiliger, minder beloning | apply |
+| `DASH_PORT` | 8787 | poort van het dashboard | apply |
+| `DASH_LAN` | 1 | 1 = dashboard ook via wifi (telefoon), 0 = alleen deze Mac | apply |
 
 \* Eist een markt meer aandelen voor de beloning (bijvoorbeeld 100), dan gebruikt de bot dat minimum.
 

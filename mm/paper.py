@@ -82,19 +82,21 @@ class PaperExchange:
         return self.cash - self.reserved(exclude)
 
     # ---- orders ----------------------------------------------------------
-    def set_order(self, cid: str, side: str, price: float | None, size: float, book_size_at_price: float, now: float) -> None:
+    def set_order(self, cid: str, side: str, price: float | None, size: float, book_size_at_price: float, now: float) -> bool:
+        """Place/replace/cancel our order. Returns True if the resting order changed."""
         ps = self.p(cid)
         cur: Order | None = getattr(ps, side)
         if price is None or size <= 0:
             setattr(ps, side, None)
-            return
+            return cur is not None
         if cur and abs(cur.price - price) < EPS and cur.remaining >= 0.5 * size:
-            return  # keep queue position
+            return False  # keep queue position
         cost = size * price if side == "bid" else max(0.0, size - ps.yes) * (1 - price)
         if cost > self.free_cash(exclude=cur) + EPS:
             setattr(ps, side, None)
-            return
+            return cur is not None
         setattr(ps, side, Order(side, price, size, queue_ahead=book_size_at_price, placed_at=now))
+        return True
 
     # ---- fills -----------------------------------------------------------
     def _execute(self, cid: str, o: Order, qty: float, now: float, reason: str) -> None:
@@ -116,13 +118,15 @@ class PaperExchange:
             self.cash += merged
         self.fills.append(Fill(now, cid, o.side, o.price, qty, reason))
 
-    def on_trades(self, cid: str, trades: list[dict], yes_token: str, now: float) -> None:
+    def on_trades(self, cid: str, trades: list[dict], yes_token: str, now: float) -> int:
         """Process real trades (from the data API) against our resting orders."""
         ps = self.p(cid)
         # collapse maker/taker rows of the same match into one print
         prints: dict[tuple, tuple[float, float, float]] = {}
+        window: set = set()
         for t in trades:
             key = (t.get("transaction_hash"), t.get("token_id"), float(t["price"]))
+            window.add(key)
             if key in ps.seen_trades:
                 continue
             px = float(t["price"])
@@ -131,10 +135,11 @@ class PaperExchange:
             prev = prints.get(key)
             if prev is None or size > prev[1]:
                 prints[key] = (yes_px, size, ts)
-        ps.seen_trades.update(prints.keys())
+        # the API only returns the latest trades, so remembering this window is enough (bounded memory)
+        ps.seen_trades = window | set(prints.keys()) if len(ps.seen_trades) > 5000 else ps.seen_trades | window
         if not ps.initialized:
             ps.initialized = True  # ignore history from before we started
-            return
+            return 0
         for yes_px, size, ts in sorted(prints.values(), key=lambda x: x[2]):
             for o in (ps.bid, ps.ask):
                 if not o or o.remaining <= EPS or ts < o.placed_at:
@@ -147,6 +152,7 @@ class PaperExchange:
                     eat = min(size, o.queue_ahead)
                     o.queue_ahead -= eat
                     self._execute(cid, o, min(size - eat, o.remaining), now, "queue")
+        return len(prints)
 
     def on_book(self, cid: str, best_bid: float | None, best_ask: float | None, now: float) -> None:
         ps = self.p(cid)

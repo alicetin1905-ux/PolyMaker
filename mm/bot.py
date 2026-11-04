@@ -9,6 +9,7 @@ import time
 from dataclasses import dataclass
 
 from .api import Market, PolymarketAPI
+from .events import EventLog, write_json_atomic
 from .paper import PaperExchange
 from .rewards import our_share
 from .scanner import days_until
@@ -39,6 +40,17 @@ class PaperBot:
         self.state_path = os.path.join(bcfg.log_dir, "state.json")
         self._n_logged_fills = 0
         self._ticks = 0
+        self.events = EventLog(bcfg.log_dir)
+        self.live_path = os.path.join(bcfg.log_dir, "live.json")
+        self.live_markets: dict[str, dict] = {}
+        self.started_at = time.time()
+        if os.path.exists(self.equity_path):
+            with open(self.equity_path) as f:
+                rows = csv.reader(f)
+                next(rows, None)
+                first = next(rows, None)
+                if first:
+                    self.started_at = float(first[0])
         for path, hdr in (
             (self.fills_path, ["time", "market", "side", "price", "size", "reason"]),
             (self.equity_path, ["time", "cash", "inventory", "rewards", "equity", "pnl_trading", "pnl_total"]),
@@ -56,35 +68,43 @@ class PaperBot:
         for m in self.markets:
             b = books.get(m.yes_token)
             if not b or b.mid is None:
+                self.events.emit("scan", m=m.slug, mid=None)
+                self.live_markets.setdefault(m.slug, {}).update(status="geen boek")
                 continue
             ps = self.ex.p(m.condition_id)
             mid = b.mid
             self.mids[m.condition_id] = mid
+            self.events.emit("scan", m=m.slug, mid=mid, bb=b.best_bid, ba=b.best_ask)
 
             # 1. fills from the book and from real trades
             self.ex.on_book(m.condition_id, b.best_bid, b.best_ask, now)
+            n_new = 0
             try:
-                self.ex.on_trades(m.condition_id, self.api.trades(m.condition_id, 100), m.yes_token, now)
+                n_new = self.ex.on_trades(m.condition_id, self.api.trades(m.condition_id, 100), m.yes_token, now)
             except RuntimeError as e:
                 print(f"  ! trades {m.slug}: {e}")
+                self.events.emit("error", m=m.slug, msg=f"trades: {e}"[:200])
+            if n_new:
+                self.events.emit("trades", m=m.slug, n=n_new)
             self.ex.on_book(m.condition_id, b.best_bid, b.best_ask, now)  # clear filled orders
 
             # 2. risk checks
             if ps.last_mid is not None and abs(mid - ps.last_mid) > self.bcfg.kill_move:
                 self.paused_until[m.condition_id] = now + self.bcfg.cooldown
                 print(f"  ! {m.slug}: mid jumped {ps.last_mid:.3f} -> {mid:.3f}, quotes off for {self.bcfg.cooldown:.0f}s")
+                self.events.emit("pause", m=m.slug, frm=ps.last_mid, to=mid, secs=self.bcfg.cooldown)
             ps.last_mid = mid
-            stop = (
-                now < self.paused_until.get(m.condition_id, 0)
-                or days_until(m.end_date) < self.bcfg.stop_days_before_end
-            )
+            days_left = days_until(m.end_date)
+            paused = now < self.paused_until.get(m.condition_id, 0)
+            ending = days_left < self.bcfg.stop_days_before_end
 
             # 3. requote
             q = make_quote(b, ps.net_yes, m.reward_max_spread, m.reward_min_size, self.scfg)
-            if stop:
+            if paused or ending:
                 q.bid = q.ask = None
-            self.ex.set_order(m.condition_id, "bid", q.bid, q.bid_size, b.size_at("bid", q.bid) if q.bid else 0, now)
-            self.ex.set_order(m.condition_id, "ask", q.ask, q.ask_size, b.size_at("ask", q.ask) if q.ask else 0, now)
+            for side, px, sz in (("bid", q.bid, q.bid_size), ("ask", q.ask, q.ask_size)):
+                if self.ex.set_order(m.condition_id, side, px, sz, b.size_at(side, px) if px else 0, now):
+                    self.events.emit("requote", m=m.slug, side=side, price=px)
 
             # 4. rewards accrual (our orders are not in the real book, so `others` = whole book)
             bo, ao = ps.bid, ps.ask
@@ -94,6 +114,22 @@ class PaperBot:
                 b, mid, m.reward_max_spread, m.reward_min_size,
             )
             ps.rewards += share * m.reward_daily * dt / 86400
+
+            lm = self.live_markets.setdefault(m.slug, {"trades_seen": 0})
+            lm.update(
+                slug=m.slug, question=m.question, condition_id=m.condition_id, yes_token=m.yes_token,
+                end_date=m.end_date, days_left=round(days_left, 1), reward_daily=m.reward_daily,
+                max_spread=m.reward_max_spread, min_size=m.reward_min_size, tick=b.tick,
+                mid=mid, best_bid=b.best_bid, best_ask=b.best_ask,
+                bid=[bo.price, round(bo.remaining, 2), round(bo.queue_ahead, 2)] if bo else None,
+                ask=[ao.price, round(ao.remaining, 2), round(ao.queue_ahead, 2)] if ao else None,
+                yes=round(ps.yes, 4), no=round(ps.no, 4), net=round(ps.net_yes, 4),
+                value=round(ps.yes * mid + ps.no * (1 - mid), 4), rewards=round(ps.rewards, 5),
+                share=round(share, 4), est_reward_day=round(share * m.reward_daily, 4),
+                status="pauze" if paused else ("stopt (einde nadert)" if ending else ("quote" if (bo or ao) else "wacht")),
+                paused_until=self.paused_until.get(m.condition_id) if paused else None,
+                trades_seen=lm["trades_seen"] + n_new, last_update=now,
+            )
 
         self._log(now)
 
@@ -107,6 +143,8 @@ class PaperBot:
                     w.writerow([time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(fl.ts)), names.get(fl.market, fl.market),
                                 fl.side, fl.price, round(fl.size, 2), fl.reason])
                     print(f"  * FILL {fl.side.upper():3} {fl.size:7.1f} @ {fl.price:.3f}  {names.get(fl.market)} ({fl.reason})")
+                    self.events.emit("fill", m=names.get(fl.market, fl.market), side=fl.side, price=fl.price,
+                                     size=round(fl.size, 2), reason=fl.reason)
             self._n_logged_fills = len(self.ex.fills)
         inv = self.ex.inventory_value(self.mids)
         rew = self.ex.total_rewards()
@@ -121,6 +159,20 @@ class PaperBot:
         with open(tmp, "w") as f:
             json.dump(state, f, indent=1)
         os.replace(tmp, self.state_path)  # atomic: no corrupt state if the Mac loses power
+        self.events.emit("tick", n=self._ticks + 1, equity=round(eq, 4), pnl=round(pnl_trading, 4), rewards=round(rew, 5))
+        write_json_atomic(self.live_path, {
+            "updated": now, "started_at": self.started_at, "interval": self.bcfg.interval, "ticks": self._ticks + 1,
+            "mode": "paper", "start_cash": self.ex.start_cash, "cash": round(self.ex.cash, 4),
+            "inventory": round(inv, 4), "equity": round(eq, 4), "rewards": round(rew, 5),
+            "pnl_trading": round(pnl_trading, 4), "pnl_total": round(pnl_trading + rew, 4),
+            "n_fills": self._n_logged_fills,
+            "reserved": round(self.ex.reserved(), 4),
+            "settings": {
+                "size": self.scfg.order_size, "max_pos": self.scfg.max_position, "spread_frac": self.scfg.spread_frac,
+                "kill_move": self.bcfg.kill_move, "cooldown": self.bcfg.cooldown, "interval": self.bcfg.interval,
+            },
+            "markets": [self.live_markets[m.slug] for m in self.markets if m.slug in self.live_markets],
+        })
         self._ticks += 1
         if (self._ticks - 1) % max(1, self.bcfg.print_every):
             return
@@ -145,6 +197,7 @@ class PaperBot:
                 self.tick()
             except Exception as e:  # keep running on unexpected API data / network trouble
                 print(f"  ! tick mislukt: {type(e).__name__}: {e}")
+                self.events.emit("error", msg=f"{type(e).__name__}: {e}"[:200])
             while self.running and time.time() - t0 < self.bcfg.interval:
                 time.sleep(0.5)
         print("\nGestopt. Samenvatting:")

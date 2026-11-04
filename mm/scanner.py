@@ -123,9 +123,14 @@ def scan(
     want: int = 20,
     max_history_calls: int = 250,
     verbose: bool = True,
+    progress=None,
+    stats: dict | None = None,
 ) -> list[Candidate]:
+    """progress(phase, done, total) is called while scanning; stats receives totals and reject counts."""
     f = f or Filters()
-    all_markets = api.reward_markets()
+    prog = progress or (lambda *a: None)
+    all_markets = api.reward_markets(on_page=lambda pg, n: prog("markten", n, 0))
+    prog("markten", len(all_markets), len(all_markets))
     rejected: dict[str, int] = {}
     markets = []
     for m in all_markets:
@@ -135,7 +140,8 @@ def scan(
         else:
             markets.append(m)
 
-    books = api.books([m.yes_token for m in markets])
+    books = api.books([m.yes_token for m in markets], on_chunk=lambda i, n: prog("orderboeken", i, n))
+    prog("orderboeken", len(markets), len(markets))
     cands: list[Candidate] = []
     for m in markets:
         b = books.get(m.yes_token)
@@ -160,7 +166,9 @@ def scan(
 
     # volatility check (one API call per market), best candidates first
     out: list[Candidate] = []
-    for c in cands[:max_history_calls]:
+    todo = cands[:max_history_calls]
+    for i, c in enumerate(todo):
+        prog("koershistorie", i, len(todo))
         c.vol_c, c.jump_c = daily_moves(api, c.market.yes_token)
         if c.vol_c is None:
             rejected["te weinig koershistorie"] = rejected.get("te weinig koershistorie", 0) + 1
@@ -173,6 +181,8 @@ def scan(
             if len(out) >= want:
                 break
 
+    if stats is not None:
+        stats.update(total=len(all_markets), passed=len(out), rejected=dict(rejected))
     if verbose:
         print(f"{len(all_markets)} markten met rewards, {len(out)} door de filters. Afgewezen:")
         for r, n in sorted(rejected.items(), key=lambda x: -x[1]):
