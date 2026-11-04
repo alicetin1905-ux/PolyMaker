@@ -24,6 +24,14 @@ Belangrijke opties: `--size` (shares per kant), `--spread-frac` (afstand tot mid
 ## Hoe het werkt
 1. **Scanner**: zoekt markten waar Polymarket dagelijkse liquidity rewards betaalt en
    schat jouw aandeel in die pool (`$/dag` en `$/dag per $100 kapitaal`).
+   Risicovolle markten worden standaard overgeslagen:
+   - eindigt binnen 30 dagen (`--min-days`)
+   - datumvenster in de vraag, zoals "between Nov 9 and Nov 15", "on Dec 10" of "by Nov 30"
+   - sport en live-events
+   - mid buiten 0,20-0,80 (`--min-mid`, `--max-mid`)
+   - beweeglijk: stdev van de dagbeweging boven 4c (`--max-vol`) of een dagsprong boven 10c in de laatste maand (`--max-jump`)
+
+   Met `--allow-risky` zet je het datumvenster- en sportfilter uit.
 2. **Strategie**: zet een bod en een laat rond de middenprijs, binnen de reward-band,
    en verschuift die op basis van je positie (voorraadbeheer).
 3. **Paper exchange**: je order sluit achteraan in de wachtrij aan en wordt alleen

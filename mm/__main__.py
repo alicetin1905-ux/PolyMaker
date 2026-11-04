@@ -9,7 +9,7 @@ import sys
 from .api import PolymarketAPI
 from .bot import BotConfig, PaperBot, print_report
 from .paper import PaperExchange
-from .scanner import print_table, scan
+from .scanner import Filters, print_table, scan
 from .strategy import StrategyConfig
 
 
@@ -21,7 +21,12 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--size", type=float, default=50, help="shares per kant (minimaal de reward min_size)")
         p.add_argument("--spread-frac", type=float, default=0.5, help="afstand tot mid als fractie van reward max_spread")
         p.add_argument("--max-pos", type=float, default=150, help="max netto positie (shares) per markt")
-        p.add_argument("--min-days", type=float, default=3, help="sla markten over die binnen N dagen eindigen")
+        p.add_argument("--min-days", type=float, default=30, help="sla markten over die binnen N dagen eindigen")
+        p.add_argument("--min-mid", type=float, default=0.20, help="alleen markten met mid tussen min-mid en max-mid")
+        p.add_argument("--max-mid", type=float, default=0.80)
+        p.add_argument("--max-vol", type=float, default=4.0, help="max stdev dagbeweging (centen, laatste maand)")
+        p.add_argument("--max-jump", type=float, default=10.0, help="max grootste dagsprong (centen, laatste maand)")
+        p.add_argument("--allow-risky", action="store_true", help="datumvenster- en sportmarkten niet uitsluiten")
 
     s = sub.add_parser("scan", help="toon de beste markten voor liquidity rewards")
     strat_args(s)
@@ -50,9 +55,16 @@ def main(argv: list[str] | None = None) -> int:
     api = PolymarketAPI()
     scfg = StrategyConfig(order_size=a.size, spread_frac=a.spread_frac, max_position=a.max_pos)
 
+    def filters(max_capital):
+        return Filters(
+            min_days_left=a.min_days, min_mid=a.min_mid, max_mid=a.max_mid, max_capital=max_capital,
+            max_daily_vol_c=a.max_vol, max_daily_jump_c=a.max_jump,
+            exclude_date_windows=not a.allow_risky, exclude_sports_live=not a.allow_risky,
+        )
+
     if a.cmd == "scan":
         print("Markten met liquidity rewards ophalen...")
-        cands = scan(api, scfg, min_days_left=a.min_days, max_capital=a.max_capital)
+        cands = scan(api, scfg, filters(a.max_capital), want=a.top)
         print_table(cands, a.top)
         print("\n$/dag = geschatte beloning bij deze quotes, $/dag/100 = per $100 kapitaal.")
         print("Schatting is conservatief én aanname: concurrentie verandert continu.")
@@ -69,7 +81,7 @@ def main(argv: list[str] | None = None) -> int:
         markets = [allm[s_] for s_ in a.slug]
     else:
         print("Scannen naar markten...")
-        cands = scan(api, scfg, min_days_left=a.min_days, max_capital=per_market)
+        cands = scan(api, scfg, filters(per_market), want=a.markets)
         print_table(cands, a.markets)
         markets = [c.market for c in cands[: a.markets]]
     if not markets:

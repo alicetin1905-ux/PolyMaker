@@ -58,6 +58,7 @@ class Market:
     tick: float
     min_order_size: float
     neg_risk: bool
+    game_start: str | None = None  # set for sports games
 
 
 class PolymarketAPI:
@@ -82,7 +83,7 @@ class PolymarketAPI:
         raise RuntimeError(f"API request failed: {url}: {last}")
 
     # ---- markets -------------------------------------------------------
-    def reward_markets(self, max_pages: int = 10) -> list[Market]:
+    def reward_markets(self, max_pages: int = 50) -> list[Market]:
         """All active markets that currently pay liquidity rewards."""
         out: list[Market] = []
         cursor = ""
@@ -148,6 +149,7 @@ def parse_market(m: dict) -> Market | None:
         tick=float(m.get("minimum_tick_size") or 0.01),
         min_order_size=float(m.get("minimum_order_size") or 5),
         neg_risk=bool(m.get("neg_risk")),
+        game_start=m.get("game_start_time") or None,
     )
 
 
