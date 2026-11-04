@@ -30,11 +30,33 @@ De bot start dan automatisch, ook na een herstart of crash, en gaat verder waar 
 
 | Commando | Doet |
 |---|---|
-| `./mac/bot.sh status` | draait hij? + samenvatting (fills, P&L, beloningen, per dag) |
+| `./mac/bot.sh status` | draait hij? + instellingen + samenvatting (fills, P&L, beloningen, per dag) |
 | `./mac/bot.sh log` | live meekijken |
+| `./mac/bot.sh config` | huidige instellingen tonen |
+| `./mac/bot.sh apply` | gewijzigde SIZE / MAX_POS / SPREAD toepassen, resultaten lopen door |
 | `./mac/bot.sh stop` / `start` | pauzeren / hervatten |
-| `./mac/bot.sh reset` | oude resultaten archiveren en opnieuw beginnen met nieuwe markten |
+| `./mac/bot.sh reset` | oude resultaten archiveren en opnieuw beginnen (nieuw startbedrag + nieuwe markten) |
 | `./mac/bot.sh uninstall` | automatisch starten verwijderen |
+
+### Instellingen
+Je geeft alleen op wat je wilt wijzigen. Instellingen worden onthouden in `bot.conf`.
+
+| Instelling | Standaard | Betekenis | Geldt na |
+|---|---|---|---|
+| `BANKROLL` | 1000 | startbedrag nepgeld ($) | install / reset |
+| `MARKETS` | 6 | aantal markten | install / reset |
+| `MIN_DAYS` | 30 | sla markten over die binnen N dagen eindigen | install / reset |
+| `SIZE` | 50 | aandelen per order (per kant)* | apply |
+| `MAX_POS` | 150 | max netto positie per markt (aandelen) | apply |
+| `SPREAD` | 0.5 | afstand tot mid als deel van de beloningsband (0.05-1.0): hoger = veiliger, minder beloning | apply |
+
+\* Eist een markt meer aandelen voor de beloning (bijvoorbeeld 100), dan gebruikt de bot dat minimum.
+
+```bash
+SIZE=30 MAX_POS=100 ./mac/bot.sh apply      # kleiner en voorzichtiger, resultaten lopen door
+SPREAD=0.7 ./mac/bot.sh apply               # verder van de mid
+BANKROLL=500 MARKETS=4 ./mac/bot.sh reset   # opnieuw beginnen met $500 op 4 markten
+```
 
 Zet in **Systeeminstellingen** het volgende aan:
 - **Energie**: "Voorkom automatische sluimerstand" en "Start automatisch op na stroomstoring"
