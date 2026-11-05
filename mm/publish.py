@@ -134,6 +134,16 @@ def run(log_dir: str, site: str, remote: str | None, branch: str, every: float, 
     every = max(MIN_EVERY, every)
     url = pages_url(remote)
     runs = 0
+    # after a (re)start the bot needs a few seconds for its first tick: don't publish stale numbers
+    live = os.path.join(log_dir, "live.json")
+    started = time.time()
+    while time.time() - started < 120:
+        try:
+            if os.path.getmtime(live) >= started:
+                break
+        except OSError:
+            pass
+        time.sleep(2)
     while True:
         t0 = time.time()
         try:
