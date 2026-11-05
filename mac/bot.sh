@@ -16,7 +16,7 @@
 #
 # Instellingen (onthouden in bot.conf; geef alleen op wat je wilt wijzigen):
 #   BANKROLL=1000   startbedrag nepgeld ($)                  -> werkt bij install/reset
-#   MARKETS=6       aantal markten                           -> werkt bij install/reset
+#   MARKETS=12      aantal markten                           -> werkt bij install/reset
 #   SIZE=50         aandelen per order (per kant)            -> werkt ook met apply
 #   MAX_POS=150     max netto positie per markt (aandelen)   -> werkt ook met apply
 #   SPREAD=0.5      afstand tot mid, deel van de beloningsband (0.1-1.0) -> werkt ook met apply
@@ -42,7 +42,7 @@ KEYS="BANKROLL MARKETS SIZE MAX_POS SPREAD MIN_DAYS DASH_PORT DASH_LAN PAGES_EVE
 
 # ---- settings: defaults < bot.conf < environment --------------------------
 for k in $KEYS; do eval "ENV_$k=\"\${$k:-}\""; done
-BANKROLL=1000; MARKETS=6; SIZE=50; MAX_POS=150; SPREAD=0.5; MIN_DAYS=30; DASH_PORT=8787; DASH_LAN=1; PAGES_EVERY=10
+BANKROLL=1000; MARKETS=12; SIZE=50; MAX_POS=150; SPREAD=0.5; MIN_DAYS=30; DASH_PORT=8787; DASH_LAN=1; PAGES_EVERY=10
 # shellcheck disable=SC1090
 [ -f "$CONF" ] && . "$CONF"
 for k in $KEYS; do

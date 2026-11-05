@@ -17,6 +17,8 @@ _DATE_WINDOW = re.compile(
     rf"\bbetween\s+{_MONTH}\s+\d{{1,2}}|\bon\s+{_MONTH}\s+\d{{1,2}}\b|\b(by|before)\s+{_MONTH}\s+\d{{1,2}}\b",
     re.IGNORECASE,
 )
+# jump on one known moment: token launch day ("FDV above $X one day after launch"), central-bank decisions
+_EVENT_JUMP = re.compile(r"\bFDV\b|after launch|\bFed\b|\bFOMC\b|rate (cut|hike)", re.IGNORECASE)
 _LIVE_KEYWORDS = re.compile(
     r"\b(vs\.?|versus|o/u|over/under|spread:|halftime|1st half|map \d|game \d|set \d|tweet|tweets|say .* during)\b",
     re.IGNORECASE,
@@ -77,6 +79,8 @@ def static_reject(m: Market, f: Filters) -> str | None:
         return "datumvenster"
     if f.exclude_sports_live and (m.game_start or _LIVE_KEYWORDS.search(m.question)):
         return "sport/live-event"
+    if f.exclude_date_windows and _EVENT_JUMP.search(m.question):
+        return "lancering/rentebesluit"
     return None
 
 

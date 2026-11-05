@@ -58,7 +58,7 @@ Uitzetten: `./mac/bot.sh pages-off`. Hoe vaak je Mac publiceert stel je in met `
 ## 24/7 op een Mac (mini)
 ```bash
 git clone https://github.com/alicetin1905-ux/PolyMaker.git && cd PolyMaker
-BANKROLL=1000 MARKETS=6 ./mac/bot.sh install   # eenmalig
+BANKROLL=1000 MARKETS=12 ./mac/bot.sh install   # eenmalig
 ```
 De bot start dan automatisch, ook na een herstart of crash, en gaat verder waar hij was.
 
@@ -80,7 +80,7 @@ Je geeft alleen op wat je wilt wijzigen. Instellingen worden onthouden in `bot.c
 | Instelling | Standaard | Betekenis | Geldt na |
 |---|---|---|---|
 | `BANKROLL` | 1000 | startbedrag nepgeld ($) | install / reset |
-| `MARKETS` | 6 | aantal markten | install / reset |
+| `MARKETS` | 12 | aantal markten | install / reset |
 | `MIN_DAYS` | 30 | sla markten over die binnen N dagen eindigen | install / reset |
 | `SIZE` | 50 | aandelen per order (per kant)* | apply |
 | `MAX_POS` | 150 | max netto positie per markt (aandelen) | apply |

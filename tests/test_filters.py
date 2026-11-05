@@ -24,6 +24,11 @@ class FilterTests(unittest.TestCase):
         self.assertIsNone(static_reject(mk("Will Anthropic raise between $85B and $95B in its IPO?"), Filters()))
         self.assertIsNone(static_reject(mk("Will the 2-year Treasury yield dip below 4.50% before 2027?"), Filters()))
 
+    def test_event_jumps(self):
+        for q in ["Unit FDV above $200M one day after launch?", "Will the Fed’s upper bound reach 4.25% or higher before 2027?"]:
+            self.assertEqual(static_reject(mk(q), Filters()), "lancering/rentebesluit", q)
+        self.assertIsNone(static_reject(mk("Will Federico Chiesa score?"), Filters(exclude_sports_live=False)))
+
     def test_ending_soon_and_sports(self):
         self.assertIn("eindigt", static_reject(mk("Will X happen?", days=10), Filters()))
         self.assertEqual(static_reject(mk("Lakers vs. Celtics"), Filters()), "sport/live-event")
