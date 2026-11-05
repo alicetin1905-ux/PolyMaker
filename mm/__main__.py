@@ -27,6 +27,7 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--max-vol", type=float, default=4.0, help="max stdev dagbeweging (centen, laatste maand)")
         p.add_argument("--max-jump", type=float, default=10.0, help="max grootste dagsprong (centen, laatste maand)")
         p.add_argument("--allow-risky", action="store_true", help="datumvenster- en sportmarkten niet uitsluiten")
+        p.add_argument("--join", action="store_true", help="agressief: op of net vóór de beste prijs quoten (meer fills, meer risico)")
 
     s = sub.add_parser("scan", help="toon de beste markten voor liquidity rewards")
     strat_args(s)
@@ -74,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
         return run(a.log_dir, a.site_dir, a.remote, a.branch, a.every * 60, a.once)
 
     api = PolymarketAPI()
-    scfg = StrategyConfig(order_size=a.size, spread_frac=a.spread_frac, max_position=a.max_pos)
+    scfg = StrategyConfig(order_size=a.size, spread_frac=a.spread_frac, max_position=a.max_pos, join_best=a.join)
 
     def filters(max_capital):
         return Filters(

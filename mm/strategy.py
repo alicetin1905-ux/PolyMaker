@@ -14,6 +14,7 @@ class StrategyConfig:
     min_distance_ticks: int = 1  # never quote closer than this to the mid
     max_position: float = 150.0  # max net YES (or NO) shares before we stop adding
     skew: float = 1.0  # how hard inventory shifts quotes (1.0 = up to one full quote-distance)
+    join_best: bool = False  # aggressive: quote at (or one tick inside) the best bid/ask
     min_mid: float = 0.05  # don't quote markets that are basically decided
     max_mid: float = 0.95
 
@@ -60,6 +61,21 @@ def make_quote(
 
     bid = round_down(center - dist, tick)
     ask = round_up(center + dist, tick)
+
+    # aggressive mode: stand at the front of the queue, or improve the price when the spread allows it.
+    # Skip the side that would grow an already large position.
+    bb, ba = book.best_bid, book.best_ask
+    if cfg.join_best and bb is not None and ba is not None:
+        gap = round((ba - bb) / tick)  # spread in ticks
+        if inv < 0.5:
+            bid = max(bid, round(bb + tick, 6) if gap >= 2 else bb)
+        if inv > -0.5:
+            # with a 2-tick spread the bid already took the middle tick: join the ask instead of crossing it
+            ask = min(ask, round(ba - tick, 6) if gap >= 3 or (gap == 2 and inv >= 0.5) else ba)
+
+    # never quote against ourselves
+    if bid is not None and ask is not None and bid >= ask - 1e-9:
+        ask = round(bid + tick, 6)
 
     # post-only: never cross the book
     if book.best_ask is not None and bid >= book.best_ask:

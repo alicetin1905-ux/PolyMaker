@@ -47,6 +47,17 @@ class StrategyTests(unittest.TestCase):
         self.assertLess(q.bid, 0.50)
         self.assertGreater(q.ask, 0.49)
 
+    def test_join_best(self):
+        cfg = StrategyConfig(spread_frac=0.5, max_position=100, join_best=True)
+        q = make_quote(book([(0.48, 100)], [(0.49, 100)]), 0, 4.0, 20, cfg)
+        self.assertEqual((q.bid, q.ask), (0.48, 0.49))  # 1-tick spread: join both sides
+        q = make_quote(book([(0.45, 100)], [(0.50, 100)]), 0, 4.0, 20, cfg)
+        self.assertEqual((q.bid, q.ask), (0.46, 0.49))  # wide spread: improve by one tick
+        q = make_quote(book([(0.29, 100)], [(0.31, 100)]), 0, 4.0, 20, cfg)
+        self.assertEqual((q.bid, q.ask), (0.30, 0.31))  # 2-tick spread: never bid == ask
+        q = make_quote(book([(0.45, 100)], [(0.50, 100)]), 80, 4.0, 20, cfg)
+        self.assertLess(q.bid, 0.46)  # long already: don't chase more on the bid
+
     def test_size_at_least_reward_min(self):
         b = book([(0.48, 100)], [(0.52, 100)])
         q = make_quote(b, 0, 4.0, 200, StrategyConfig(order_size=50))
