@@ -17,6 +17,7 @@ from urllib.parse import parse_qs, urlparse
 
 from .api import PolymarketAPI
 from .events import write_json_atomic
+from .paper import apply_fill
 from .scanner import Filters, scan
 from .strategy import StrategyConfig
 
@@ -251,15 +252,26 @@ class Hub:
         return pts
 
     def fill_rows(self, slug: str | None = None, limit: int = 300) -> list[dict]:
-        rows = self.fills.read()
-        out = []
-        for r in reversed(rows):
-            if len(r) < 6 or (slug and r[1] != slug):
+        """Fills newest first, each with its realized P&L and the position after it.
+
+        Older fill logs lack those columns, so the cost basis is replayed per market from the start.
+        """
+        book: dict[str, tuple[float, float]] = {}
+        all_rows = []
+        for r in self.fills.read():
+            if len(r) < 6:
                 continue
-            out.append({"time": r[0], "market": r[1], "side": r[2], "price": float(r[3]), "size": float(r[4]), "reason": r[5]})
-            if len(out) >= limit:
-                break
-        return out
+            try:
+                row = {"time": r[0], "market": r[1], "side": r[2], "price": float(r[3]), "size": float(r[4]), "reason": r[5]}
+            except ValueError:
+                continue
+            net, avg = book.get(row["market"], (0.0, 0.0))
+            net, avg, realized = apply_fill(net, avg, row["side"], row["price"], row["size"])
+            book[row["market"]] = (net, avg)
+            row.update(realized=round(realized, 4), pos=round(net, 2), avg=round(avg, 4))
+            all_rows.append(row)
+        out = [x for x in reversed(all_rows) if not slug or x["market"] == slug]
+        return out[:limit]
 
     def sparks(self, slugs: list[str], seconds: float = 6 * 3600, points: int = 60) -> dict:
         now = time.time()

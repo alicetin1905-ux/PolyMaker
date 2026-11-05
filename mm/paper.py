@@ -39,6 +39,26 @@ class Fill:
     price: float
     size: float
     reason: str
+    realized: float = 0.0  # P&L locked in by this fill (closing part only)
+    pos_after: float = 0.0  # net YES position after the fill (negative = NO)
+    avg_after: float = 0.0  # average YES-equivalent entry price of the remaining position
+
+
+def apply_fill(net: float, avg: float, side: str, price: float, qty: float) -> tuple[float, float, float]:
+    """Average-cost bookkeeping in YES terms. Returns (new_net, new_avg, realized).
+
+    A bid buys YES at `price`; an ask sells YES at `price` (economically: buys NO at 1-price).
+    """
+    d = qty if side == "bid" else -qty
+    if abs(net) < EPS or (net > 0) == (d > 0):
+        new = net + d
+        return new, (abs(net) * avg + qty * price) / abs(new), 0.0
+    close = min(qty, abs(net))
+    realized = close * (price - avg) * (1 if net > 0 else -1)
+    new = net + d
+    if abs(new) < EPS:
+        return 0.0, 0.0, realized
+    return new, (avg if abs(new) <= abs(net) and (new > 0) == (net > 0) else price), realized
 
 
 @dataclass
@@ -51,6 +71,12 @@ class Position:
     seen_trades: set = field(default_factory=set)
     initialized: bool = False
     last_mid: float | None = None
+    avg: float = 0.0  # average entry price of the net position (YES terms)
+    realized: float = 0.0  # P&L locked in by closing trades
+
+    def unrealized(self, mid: float | None) -> float:
+        net = self.yes - self.no
+        return 0.0 if mid is None or abs(net) < EPS else net * (mid - self.avg)
 
     @property
     def net_yes(self) -> float:
@@ -64,6 +90,7 @@ class PaperExchange:
         self.maker_fee = maker_fee
         self.pos: dict[str, Position] = {}
         self.fills: list[Fill] = []
+        self.needs_rebuild = False
 
     def p(self, cid: str) -> Position:
         return self.pos.setdefault(cid, Position())
@@ -104,6 +131,7 @@ class PaperExchange:
             return
         ps = self.p(cid)
         fee = qty * self.maker_fee * min(o.price, 1 - o.price)
+        net_before = ps.yes - ps.no
         if o.side == "bid":
             self.cash -= qty * o.price + fee
             ps.yes += qty
@@ -111,12 +139,14 @@ class PaperExchange:
             self.cash -= qty * (1 - o.price) + fee
             ps.no += qty
         o.filled += qty
+        _, ps.avg, realized = apply_fill(net_before, ps.avg, o.side, o.price, qty)
+        ps.realized += realized - fee
         merged = min(ps.yes, ps.no)
         if merged > 0:
             ps.yes -= merged
             ps.no -= merged
             self.cash += merged
-        self.fills.append(Fill(now, cid, o.side, o.price, qty, reason))
+        self.fills.append(Fill(now, cid, o.side, o.price, qty, reason, realized - fee, ps.yes - ps.no, ps.avg))
 
     def on_trades(self, cid: str, trades: list[dict], yes_token: str, now: float) -> int:
         """Process real trades (from the data API) against our resting orders."""
@@ -188,7 +218,8 @@ class PaperExchange:
             "start_cash": self.start_cash,
             "cash": self.cash,
             "positions": {
-                cid: {"yes": ps.yes, "no": ps.no, "rewards": ps.rewards, "last_mid": ps.last_mid}
+                cid: {"yes": ps.yes, "no": ps.no, "rewards": ps.rewards, "last_mid": ps.last_mid,
+                      "avg": ps.avg, "realized": ps.realized}
                 for cid, ps in self.pos.items()
             },
         }
@@ -199,3 +230,17 @@ class PaperExchange:
         for cid, v in d.get("positions", {}).items():
             ps = self.p(cid)
             ps.yes, ps.no, ps.rewards, ps.last_mid = v["yes"], v["no"], v["rewards"], v.get("last_mid")
+            ps.avg, ps.realized = v.get("avg", 0.0), v.get("realized", 0.0)
+        self.needs_rebuild = any("avg" not in v for v in d.get("positions", {}).values())
+
+    def rebuild_cost_basis(self, fills: list[tuple[str, str, float, float]]) -> None:
+        """Recompute avg/realized from historical fills (cid, side, price, size) for older state files."""
+        for ps in self.pos.values():
+            ps.avg = ps.realized = 0.0
+        nets: dict[str, float] = {}
+        for cid, side, price, size in fills:
+            ps = self.p(cid)
+            net, ps.avg, r = apply_fill(nets.get(cid, 0.0), ps.avg, side, price, size)
+            nets[cid] = net
+            ps.realized += r
+        self.needs_rebuild = False

@@ -127,6 +127,15 @@ def main(argv: list[str] | None = None) -> int:
     ex = PaperExchange(a.bankroll)
     if saved:
         ex.load_dict(saved)
+        fills_csv = os.path.join(a.log_dir, "fills.csv")
+        if ex.needs_rebuild and os.path.exists(fills_csv):  # older state: rebuild cost basis from the fill log
+            import csv
+
+            cid_of = {m.slug: m.condition_id for m in (list(allm.values()) if slugs else markets)}
+            with open(fills_csv) as f:
+                rows = [r for r in csv.DictReader(f) if r.get("market") in cid_of]
+            ex.rebuild_cost_basis([(cid_of[r["market"]], r["side"], float(r["price"]), float(r["size"])) for r in rows])
+            print(f"Kostprijs herberekend uit {len(rows)} eerdere fills.")
         print(f"Hervat: kas ${ex.cash:.2f}, markten: {[m.slug for m in markets]}")
     print(f"\nPAPER TRADING met ${ex.start_cash:.0f} nepgeld op {len(markets)} markt(en). Ctrl-C om te stoppen.\n")
     bcfg = BotConfig(interval=a.interval, hours=a.hours, log_dir=a.log_dir, print_every=a.print_every)

@@ -121,3 +121,43 @@ class PaperTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CostBasisTests(unittest.TestCase):
+    def test_apply_fill(self):
+        from mm.paper import apply_fill
+        net, avg, r = apply_fill(0, 0, "ask", 0.54, 200)  # sell YES (short)
+        self.assertEqual((net, round(avg, 4), r), (-200, 0.54, 0.0))
+        net, avg, r = apply_fill(net, avg, "bid", 0.57, 200)  # buy back higher: loss
+        self.assertEqual(net, 0.0)
+        self.assertAlmostEqual(r, -6.0)
+        net, avg, r = apply_fill(net, avg, "bid", 0.56, 200)
+        self.assertEqual((net, round(avg, 4), r), (200, 0.56, 0.0))
+        net, avg, r = apply_fill(net, avg, "ask", 0.60, 50)  # partial close with profit
+        self.assertEqual((net, round(avg, 4)), (150, 0.56))
+        self.assertAlmostEqual(r, 2.0)
+        net, avg, r = apply_fill(net, avg, "ask", 0.50, 250)  # flip to short
+        self.assertAlmostEqual(r, 150 * (0.50 - 0.56))
+        self.assertEqual((net, round(avg, 4)), (-100, 0.50))
+
+    def test_realized_plus_unrealized_equals_trading_pnl(self):
+        ex = PaperExchange(1000)
+        ex.on_trades("m", [], "YES", 0)
+        fills = [("ask", 0.54, 200), ("bid", 0.57, 200), ("bid", 0.56, 200), ("ask", 0.58, 80)]
+        for i, (side, px, sz) in enumerate(fills):
+            ex.set_order("m", side, px, sz, 0, now=100 + i)
+            through = px + 0.01 if side == "ask" else px - 0.01
+            ex.on_trades("m", [trade(through, sz, 101 + i, tx=f"t{i}")], "YES", 101 + i)
+            setattr(ex.p("m"), side, None)
+        mid = 0.555
+        ps = ex.p("m")
+        self.assertAlmostEqual(ex.equity({"m": mid}) - 1000, ps.realized + ps.unrealized(mid), places=6)
+        self.assertAlmostEqual(ps.realized, -6.0 + 80 * (0.58 - 0.56), places=6)
+        self.assertAlmostEqual(ex.fills[1].realized, -6.0, places=6)
+
+    def test_rebuild_cost_basis(self):
+        ex = PaperExchange(1000)
+        ex.p("m").yes = 200
+        ex.rebuild_cost_basis([("m", "ask", 0.54, 200), ("m", "bid", 0.57, 200), ("m", "bid", 0.56, 200)])
+        self.assertAlmostEqual(ex.p("m").realized, -6.0)
+        self.assertAlmostEqual(ex.p("m").avg, 0.56)

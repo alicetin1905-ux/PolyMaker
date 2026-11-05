@@ -163,6 +163,20 @@ svg.wires .flow { fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-d
 .slot .nm { font-size: 12px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .slot .q { font: 500 11px var(--mono); color: var(--text-2); white-space: nowrap; }
 .slot .q b { font-weight: 600; color: var(--text); }
+.toast { position: absolute; left: 14px; right: 14px; top: 58px; z-index: 6; pointer-events: none; opacity: 0; transform: translateY(-6px); transition: opacity .35s, transform .35s;
+  background: rgba(13,17,23,.96); border: 1px solid var(--line-2); border-left: 4px solid var(--tc, var(--aqua)); border-radius: 12px; padding: 12px 14px;
+  box-shadow: 0 12px 32px rgba(0,0,0,.5), 0 0 24px -8px var(--tc, var(--aqua)); }
+.toast.show { opacity: 1; transform: none; }
+.toast .t1 { display: flex; align-items: center; gap: 8px; font: 700 11px var(--sans); letter-spacing: 1px; color: var(--tc); text-transform: uppercase; }
+.toast .tdot { width: 8px; height: 8px; border-radius: 50%; background: var(--tc); box-shadow: 0 0 10px var(--tc); }
+.toast .tclose { margin-left: auto; font: 500 11px var(--mono); color: var(--muted); letter-spacing: 0; }
+.toast .t2 { font: 600 17px var(--mono); margin-top: 6px; }
+.toast .t3 { color: var(--text-2); font-size: 13px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.toast .t4, .toast .t5 { font-size: 13px; margin-top: 4px; color: var(--text-2); }
+.toast .t4 b, .toast .t5 b { color: var(--text); }
+.slot .pl2 { grid-column: 1 / -1; display: flex; justify-content: space-between; gap: 8px; font: 11px var(--mono); color: var(--muted); }
+.slot .pl2 b { color: var(--text-2); font-weight: 600; }
+tr.tot td { border-top: 1px solid var(--line-2); font-weight: 600; }
 .posbar { grid-column: 1 / -1; height: 4px; background: var(--line); border-radius: 4px; position: relative; }
 .posbar::before { content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--line-2); }
 .posbar i { position: absolute; top: 0; bottom: 0; border-radius: 4px; }
@@ -615,6 +629,57 @@ function stepPulses(now) {
   if (W.pulses.length) W.raf = requestAnimationFrame(stepPulses);
 }
 
+// ---- plain-language fill description ------------------------------------------------
+// a short YES position is shown as NEE shares at the NEE price (1 - YES price)
+const posLabel = (net, avg) => Math.abs(net) < 0.01 ? "vlak" : `${n0(Math.abs(net))} ${net > 0 ? "JA" : "NEE"} @ ${cents(net > 0 ? avg : 1 - avg)}`;
+function posText(net, avg) {
+  if (net == null) return "";
+  return Math.abs(net) < 0.01 ? "positie nu <b>vlak</b>" : `positie nu <b>${posLabel(net, avg)}</b>`;
+}
+function fillInfo(f) {
+  // f: {side, price, size, realized?, pos?, avg?}
+  const buy = f.side === "bid";
+  const verb = buy ? "Gekocht" : "Verkocht";
+  const head = `${verb} ${n0(f.size)} JA @ ${cents(f.price)}`;
+  let what = "", res = "";
+  if (f.realized != null && Math.abs(f.realized) > 0.004) {
+    what = buy ? "sluit eerdere verkoop" : "sluit eerdere aankoop";
+    res = `<span class="${cls(f.realized)}">${f.realized > 0 ? "winst" : "verlies"} ${usd(f.realized, true)}</span>`;
+  } else if (f.pos != null) {
+    const before = f.pos - (buy ? f.size : -f.size);
+    what = Math.abs(before) < 0.01 ? "opent positie" : (Math.sign(before) === Math.sign(f.pos) ? "vergroot positie" : "draait positie om");
+  }
+  return { buy, head, what, res, pos: f.pos != null ? posText(f.pos, f.avg) : "" };
+}
+function fillCells(f) {
+  const r = f.realized;
+  const res = r == null ? `<td class="r muted">–</td>` : Math.abs(r) > 0.004 ? `<td class="r num ${cls(r)}">${usd(r, true)}</td>` : `<td class="r muted">opent</td>`;
+  const pos = f.pos == null ? "–" : posLabel(f.pos, f.avg);
+  return res + `<td class="r num">${pos}</td>`;
+}
+function fillHTML(f, market) {
+  const i = fillInfo(f);
+  return `<b>${i.head}</b>${market ? ` · ${esc(nameOf(market))}` : ""}${i.what ? ` · ${i.what}` : ""}${i.res ? ` → ${i.res}` : ""}${i.pos ? ` · ${i.pos}` : ""}`;
+}
+
+// ---- fill toast on the BOT tile ---------------------------------------------------------
+const toastQ = []; let toastBusy = false;
+function showFillToast(ev) { toastQ.push(ev); if (!toastBusy) nextToast(); }
+function nextToast() {
+  const box = $("#toast"); const ev = toastQ.shift();
+  if (!ev || !box) { toastBusy = false; if (box) box.classList.remove("show"); return; }
+  toastBusy = true;
+  const i = fillInfo(ev), c = i.buy ? COLORS.fillBuy : COLORS.fillSell;
+  box.style.setProperty("--tc", c);
+  box.innerHTML = `<div class="t1"><span class="tdot"></span>FILL · ${i.buy ? "koop" : "verkoop"}<span class="tclose">${hhmmss(ev.ts)}</span></div>
+    <div class="t2">${esc(i.head)}</div>
+    <div class="t3">${esc(nameOf(ev.m))}</div>
+    ${i.what || i.res ? `<div class="t4">${i.what}${i.res ? ` → ${i.res}` : ""}</div>` : ""}
+    ${i.pos ? `<div class="t5">${i.pos}</div>` : ""}`;
+  box.classList.remove("show"); void box.offsetWidth; box.classList.add("show");
+  setTimeout(nextToast, toastQ.length ? 4500 : 10000);
+}
+
 // ======================================================================
 // event stream → animations + feed
 // ======================================================================
@@ -658,10 +723,11 @@ function handleEvent(ev, quiet = false) {
     case "fill": {
       const buy = ev.side === "bid", c = buy ? COLORS.fillBuy : COLORS.fillSell;
       if (home) pulse("signal", c, { size: 6, trail: 8, dur: 1300, onArrive: () => {
+        showFillToast(ev);
         const core = $(".core"); if (core) { core.classList.add("fill"); setTimeout(() => core.classList.remove("fill"), 160); }
         const s = $(`.slot[data-slug="${CSS.escape(m)}"]`); if (s) { s.classList.add("fillflash"); setTimeout(() => s.classList.remove("fillflash"), 900); }
       } });
-      feedPush(ev, c, `<b>FILL ${buy ? "koop JA" : "verkoop JA"}</b> ${n0(ev.size)} @ <span class="num">${cents(ev.price)}</span> · ${esc(nameOf(m))} <span class="muted">(${esc(ev.reason)})</span>`);
+      feedPush(ev, c, `FILL · ${fillHTML(ev, m)}`);
       break;
     }
     case "pause":
@@ -784,7 +850,7 @@ views.home = {
         <div class="kpis">
           <div class="kpi"><div class="label">Totaal resultaat</div><div class="v num" id="kTot">–</div><div class="h">handel + beloningen</div></div>
           <div class="kpi"><div class="label">Beloningen</div><div class="v num" id="kRew">–</div><div class="h">schatting liquidity rewards</div></div>
-          <div class="kpi"><div class="label">Handel P&amp;L</div><div class="v num" id="kTrd">–</div><div class="h">incl. open posities op mid</div></div>
+          <div class="kpi"><div class="label">Handel P&amp;L</div><div class="v num" id="kTrd">–</div><div class="h" id="kTrdH">incl. open posities op mid</div></div>
           <div class="kpi"><div class="label">Per dag</div><div class="v num" id="kDay">–</div><div class="h" id="kDayH">extrapolatie</div></div>
           <div class="kpi"><div class="label">Kas</div><div class="v num" id="kCash">–</div><div class="h" id="kRes">&nbsp;</div></div>
           <div class="kpi"><div class="label">In posities</div><div class="v num" id="kInv">–</div><div class="h">waarde op middenprijs</div></div>
@@ -837,6 +903,7 @@ views.home = {
             <div class="slots" id="slots"></div>
           </div>
           <div class="lastact" id="lastact">Laatste actie: –</div>
+          <div class="toast" id="toast" aria-live="polite"></div>
           <div class="ports in">
             <div class="p" data-l="data"><span class="led"></span><span class="pl">DATA</span></div>
             <div class="p" data-l="signal"><span class="led"></span><span class="pl">SIGNAAL</span></div>
@@ -889,11 +956,12 @@ views.home = {
       set("#kTot", L.pnl_total, true); set("#kRew", L.rewards, true); set("#kTrd", L.pnl_trading, true);
       set("#kCash", L.cash); set("#kInv", L.inventory);
       $("#kRes").textContent = `${usd(L.reserved)} vast in orders`;
+      if (L.realized != null) $("#kTrdH").textContent = `gerealiseerd ${usd(L.realized, true)} · open ${usd(L.unrealized, true)}`;
       const up = L.updated - L.started_at;
       $("#kUp").textContent = dur(up); $("#kTicks").textContent = `${n0(L.ticks)} ticks deze sessie`;
       $("#kFills").textContent = n0(L.n_fills);
-      if (up > 3600) { set("#kDay", L.pnl_total / up * 86400, true); $("#kDayH").textContent = up < 3 * 86400 ? "extrapolatie, nog onbetrouwbaar" : "extrapolatie"; }
-      else { $("#kDay").textContent = "–"; $("#kDayH").textContent = "pas na 1 uur"; }
+      if (up > 6 * 3600) { set("#kDay", L.pnl_total / up * 86400, true); $("#kDayH").textContent = up < 3 * 86400 ? "extrapolatie, nog onbetrouwbaar" : "extrapolatie"; }
+      else { $("#kDay").textContent = "–"; $("#kDayH").textContent = "pas na 6 uur zinvol"; }
       $("#cTick").textContent = n0(STATIC && botOnline() ? L.ticks + Math.floor((serverNow() - L.updated) / (L.interval || 15)) : L.ticks);
       $("#pmSub").textContent = STATIC ? `${L.markets.length} bot-markten · live koersen elke 15s` : `${L.markets.length} bot-markten · elke ${L.interval}s gescand`;
       const chip = $("#botChip"), anyPause = L.markets.some(m => m.status === "pauze");
@@ -903,7 +971,7 @@ views.home = {
       if (key !== this.rendered) {
         this.rendered = key;
         $("#mrows").innerHTML = L.markets.map(m => `<div class="mrow" data-slug="${esc(m.slug)}"><span class="led"></span><span class="name" title="${esc(m.question)}">${esc(shortQ(m.question))}</span><span class="sp"></span><span class="mid">–</span></div>`).join("") || `<div class="empty">Geen markten</div>`;
-        $("#slots").innerHTML = L.markets.map(m => `<div class="slot" data-slug="${esc(m.slug)}"><span class="nm">${esc(shortQ(m.question))}</span><span class="q"></span><div class="posbar"><i></i></div></div>`).join("");
+        $("#slots").innerHTML = L.markets.map(m => `<div class="slot" data-slug="${esc(m.slug)}"><span class="nm">${esc(shortQ(m.question))}</span><span class="q"></span><span class="pl2"></span><div class="posbar"><i></i></div></div>`).join("");
         requestAnimationFrame(layoutWires);
       }
       const maxPos = L.settings?.max_pos || 150;
@@ -918,6 +986,10 @@ views.home = {
           i.style.background = f >= 0 ? COLORS.signal : COLORS.fillSell;
           i.style.left = f >= 0 ? "50%" : (50 + f * 50) + "%"; i.style.width = Math.abs(f) * 50 + "%";
           sl.title = `Netto ${m.net >= 0 ? "JA" : "NEE"} ${n0(Math.abs(m.net))} aandelen`;
+          const flat = Math.abs(m.net || 0) < 0.01, res = (m.realized || 0) + (m.unrealized || 0);
+          $(".pl2", sl).innerHTML = flat
+            ? `<span>geen positie</span><span>${Math.abs(m.realized || 0) > 0.004 ? `resultaat <b class="${cls(m.realized)}">${usd(m.realized, true)}</b>` : ""}</span>`
+            : `<span><b>${posLabel(m.net, m.avg)}</b></span><span>handel <b class="${cls(res)}">${usd(res, true)}</b></span>`;
         }
       }
     }
@@ -1004,7 +1076,7 @@ views.market = {
         <div class="card"><h2>Middenprijs</h2><div class="chart" id="mchart"></div><div class="note" id="mnote"></div></div>
         <div class="card"><h2>Orderboek (live)</h2><div class="book" id="mbook"><div class="empty">Laden…</div></div><div class="note">Omrande regels = waar onze (virtuele) orders staan. Paper-orders staan niet echt in het boek.</div></div>
       </section>
-      <section class="card"><h2>Fills in deze markt</h2><div class="tw"><table><thead><tr><th>Tijd</th><th>Kant</th><th class="r">Prijs</th><th class="r">Aantal</th><th>Hoe</th></tr></thead><tbody id="mfills"></tbody></table></div></section>`;
+      <section class="card"><h2>Fills in deze markt</h2><div class="tw"><table><thead><tr><th>Tijd</th><th>Wat</th><th class="r">Resultaat</th><th class="r">Positie na</th><th>Hoe</th></tr></thead><tbody id="mfills"></tbody></table></div></section>`;
     this.update(); this.bookTimer = setInterval(() => this.loadBook(), 5000);
   },
   unmount() { clearInterval(this.bookTimer); },
@@ -1027,7 +1099,8 @@ views.market = {
       k("Middenprijs", cents(m.mid), `boek ${cents(m.best_bid)} / ${cents(m.best_ask)}`),
       k("Ons bod", m.bid ? cents(m.bid[0]) : "–", m.bid ? `${n0(m.bid[1])} st · ${n0(m.bid[2])} vóór ons` : "geen order"),
       k("Onze laat", m.ask ? cents(m.ask[0]) : "–", m.ask ? `${n0(m.ask[1])} st · ${n0(m.ask[2])} vóór ons` : "geen order"),
-      k("Positie", Math.abs(m.net) < 0.01 ? "vlak" : (m.net > 0 ? "JA " : "NEE ") + n0(Math.abs(m.net)), `waarde ${usd(m.value)}`),
+      k("Positie", Math.abs(m.net) < 0.01 ? "vlak" : (m.net > 0 ? "JA " : "NEE ") + n0(Math.abs(m.net)), Math.abs(m.net) < 0.01 ? "" : `${posLabel(m.net, m.avg)} · waarde ${usd(m.value)}`),
+      k("Handel in deze markt", usd((m.realized || 0) + (m.unrealized || 0), true), `gerealiseerd ${usd(m.realized || 0, true)} · open ${usd(m.unrealized || 0, true)}`, cls((m.realized || 0) + (m.unrealized || 0))),
       k("Beloning verdiend", usd3(m.rewards), "schatting"),
       k("Aandeel in pool", pct(m.share), `≈ ${usd(m.est_reward_day)}/dag`),
       k("Handel gezien", n0(m.trades_seen), "sinds de bot (her)startte"),
@@ -1043,7 +1116,7 @@ views.market = {
     if (S.view !== this || !$("#mchart")) return;  // user navigated away while loading
     const markers = d.fills.map(f => ({ t: Date.parse(f.time.replace(" ", "T")) / 1000, v: f.price, color: f.side === "bid" ? COLORS.fillBuy : COLORS.fillSell, shape: f.side === "bid" ? "up" : "down", label: `${f.side === "bid" ? "Koop" : "Verkoop"} ${n0(f.size)} @ ${cents(f.price)}` }));
     lineChart($("#mchart"), { series: [{ name: "Middenprijs", color: COLORS.total, pts }], markers, markerLegend: markers.length ? [{ name: "Koop-fill", color: COLORS.fillBuy }, { name: "Verkoop-fill", color: COLORS.fillSell }] : [], yfmt: cents, height: 260, minSpan: 0.02, aria: "Middenprijs over tijd", empty: "Nog geen koersgeschiedenis" });
-    $("#mfills").innerHTML = d.fills.map(f => `<tr><td class="num">${esc(f.time)}</td><td><span class="dot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${f.side === "bid" ? COLORS.fillBuy : COLORS.fillSell}"></span> ${f.side === "bid" ? "koop JA" : "verkoop JA"}</td><td class="r num">${cents(f.price)}</td><td class="r num">${n0(f.size)}</td><td class="muted">${esc(f.reason)}</td></tr>`).join("") || `<tr><td colspan="5"><div class="empty">Nog geen fills in deze markt.</div></td></tr>`;
+    $("#mfills").innerHTML = d.fills.map(f => `<tr><td class="num">${esc(f.time)}</td><td><span class="dot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${f.side === "bid" ? COLORS.fillBuy : COLORS.fillSell}"></span> ${f.side === "bid" ? "koop" : "verkoop"} ${n0(f.size)} JA @ ${cents(f.price)}</td>${fillCells(f)}<td class="muted">${esc(f.reason)}</td></tr>`).join("") || `<tr><td colspan="5"><div class="empty">Nog geen fills in deze markt.</div></td></tr>`;
     this.loadBook();
   },
   async loadBook() {
@@ -1083,11 +1156,12 @@ views.bot = {
         <div class="chart" id="bchart"></div>
       </section>
       <section class="two" style="margin-bottom:14px">
-        <div class="card"><h2>Posities</h2><div class="tw"><table><thead><tr><th>Markt</th><th class="r">JA</th><th class="r">NEE</th><th class="r">Waarde</th><th class="r">Beloning</th></tr></thead><tbody id="bpos"></tbody></table></div></div>
+        <div class="card"><h2>Resultaat per markt</h2><div class="tw"><table><thead><tr><th>Markt</th><th class="r">Positie</th><th class="r">Gekocht @</th><th class="r">Nu</th><th class="r">Open</th><th class="r">Gerealiseerd</th><th class="r">Beloning</th><th class="r">Totaal</th></tr></thead><tbody id="bpos"></tbody></table></div>
+          <div class="note">Open = winst/verlies op de positie die er nog staat (tegen de middenprijs). Gerealiseerd = vastgelegd door posities te sluiten. Totaal = open + gerealiseerd + beloning.</div></div>
         <div class="card"><h2>Instellingen</h2><dl class="kv" id="bset"></dl><div class="note">Wijzigen op de Mac: <code>SIZE=30 MAX_POS=100 ./mac/bot.sh apply</code></div></div>
       </section>
       <section class="two">
-        <div class="card"><h2>Fills</h2><div class="tw" style="max-height:420px;overflow:auto"><table><thead><tr><th>Tijd</th><th>Markt</th><th>Kant</th><th class="r">Prijs</th><th class="r">Aantal</th></tr></thead><tbody id="bfills"></tbody></table></div></div>
+        <div class="card"><h2>Fills</h2><div class="tw" style="max-height:420px;overflow:auto"><table><thead><tr><th>Tijd</th><th>Markt</th><th>Wat</th><th class="r">Resultaat</th><th class="r">Positie na</th></tr></thead><tbody id="bfills"></tbody></table></div></div>
         <div class="card"><h2>Logboek</h2><div class="filters seg" id="flt">${["alles", "fills", "signalen", "scanner", "fouten"].map(f => `<button data-f="${f}" class="${f === this.filter ? "on" : ""}">${f}</button>`).join("")}</div><div class="feed"><ul id="blog"></ul></div></div>
       </section>`;
     $$("#rng button").forEach(b => b.onclick = () => { this.range = b.dataset.r; $$("#rng button").forEach(x => x.classList.toggle("on", x === b)); this.loadChart(); });
@@ -1112,7 +1186,7 @@ views.bot = {
   async loadFills() {
     let r; try { r = await api("/api/fills"); } catch { return; }
     const tb = $("#bfills"); if (!tb) return;
-    tb.innerHTML = r.fills.map(f => `<tr class="click" data-slug="${esc(f.market)}"><td class="num">${esc(f.time.slice(5))}</td><td style="max-width:220px;overflow:hidden;text-overflow:ellipsis">${esc(nameOf(f.market))}</td><td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${f.side === "bid" ? COLORS.fillBuy : COLORS.fillSell}"></span> ${f.side === "bid" ? "koop" : "verkoop"}</td><td class="r num">${cents(f.price)}</td><td class="r num">${n0(f.size)}</td></tr>`).join("") || `<tr><td colspan="5"><div class="empty">Nog geen fills. Dat is normaal in het begin: de bot staat achteraan in de wachtrij.</div></td></tr>`;
+    tb.innerHTML = r.fills.map(f => `<tr class="click" data-slug="${esc(f.market)}"><td class="num">${esc(f.time.slice(5))}</td><td style="max-width:220px;overflow:hidden;text-overflow:ellipsis">${esc(nameOf(f.market))}</td><td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${f.side === "bid" ? COLORS.fillBuy : COLORS.fillSell}"></span> ${f.side === "bid" ? "koop" : "verkoop"} ${n0(f.size)} @ ${cents(f.price)}</td>${fillCells(f)}</tr>`).join("") || `<tr><td colspan="5"><div class="empty">Nog geen fills. Dat is normaal in het begin: de bot staat achteraan in de wachtrij.</div></td></tr>`;
     $$("tr.click", tb).forEach(tr => tr.onclick = () => location.hash = "#/markt/" + encodeURIComponent(tr.dataset.slug));
   },
   update() {
@@ -1130,7 +1204,14 @@ views.bot = {
       k("Looptijd", dur(up), `${n0(L.ticks)} ticks · elke ${L.interval}s`),
       k("Laatste tick", hhmmss(L.updated), botOnline() ? "bot is live" : "bot offline", botOnline() ? "" : "neg"),
     ].join("");
-    $("#bpos").innerHTML = L.markets.map(m => `<tr class="click" data-slug="${esc(m.slug)}"><td style="max-width:260px;overflow:hidden;text-overflow:ellipsis">${esc(shortQ(m.question))}</td><td class="r num">${n0(m.yes)}</td><td class="r num">${n0(m.no)}</td><td class="r num">${usd(m.value)}</td><td class="r num">${usd3(m.rewards)}</td></tr>`).join("");
+    const rows = L.markets.slice().sort((a, b) => (a.pnl ?? 0) - (b.pnl ?? 0));
+    const sum = k => rows.reduce((t, m) => t + (m[k] || 0), 0);
+    const td = v => `<td class="r num ${cls(v)}">${usd(v, true)}</td>`;
+    $("#bpos").innerHTML = rows.map(m => `<tr class="click" data-slug="${esc(m.slug)}"><td style="max-width:240px;overflow:hidden;text-overflow:ellipsis">${esc(shortQ(m.question))}</td>
+      <td class="r num">${Math.abs(m.net) < 0.01 ? "–" : `${n0(Math.abs(m.net))} ${m.net > 0 ? "JA" : "NEE"}`}</td>
+      <td class="r num">${Math.abs(m.net) < 0.01 ? "–" : cents(m.net > 0 ? m.avg : 1 - m.avg)}</td><td class="r num">${Math.abs(m.net) < 0.01 ? cents(m.mid) : cents(m.net > 0 ? m.mid : 1 - m.mid)}</td>
+      ${td(m.unrealized)}${td(m.realized)}${td(m.rewards)}${td(m.pnl)}</tr>`).join("")
+      + `<tr class="tot"><td>Totaal</td><td></td><td></td><td></td>${td(sum("unrealized"))}${td(sum("realized"))}${td(sum("rewards"))}${td(sum("pnl"))}</tr>`;
     $$("#bpos tr.click").forEach(tr => tr.onclick = () => location.hash = "#/markt/" + encodeURIComponent(tr.dataset.slug));
     const s = L.settings || {};
     $("#bset").innerHTML = [

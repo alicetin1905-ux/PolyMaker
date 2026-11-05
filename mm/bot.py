@@ -44,6 +44,10 @@ class PaperBot:
         self.live_path = os.path.join(bcfg.log_dir, "live.json")
         self.live_markets: dict[str, dict] = {}
         self.started_at = time.time()
+        self._fills_before = 0  # fills logged by earlier runs (for the total count)
+        if os.path.exists(self.fills_path):
+            with open(self.fills_path) as f:
+                self._fills_before = max(0, sum(1 for line in f if line.strip()) - 1)
         if os.path.exists(self.equity_path):
             with open(self.equity_path) as f:
                 rows = csv.reader(f)
@@ -52,7 +56,7 @@ class PaperBot:
                 if first:
                     self.started_at = float(first[0])
         for path, hdr in (
-            (self.fills_path, ["time", "market", "side", "price", "size", "reason"]),
+            (self.fills_path, ["time", "market", "side", "price", "size", "reason", "realized", "pos_after", "avg_after"]),
             (self.equity_path, ["time", "cash", "inventory", "rewards", "equity", "pnl_trading", "pnl_total"]),
         ):
             if not os.path.exists(path):
@@ -125,6 +129,8 @@ class PaperBot:
                 ask=[ao.price, round(ao.remaining, 2), round(ao.queue_ahead, 2)] if ao else None,
                 yes=round(ps.yes, 4), no=round(ps.no, 4), net=round(ps.net_yes, 4),
                 value=round(ps.yes * mid + ps.no * (1 - mid), 4), rewards=round(ps.rewards, 5),
+                avg=round(ps.avg, 4), realized=round(ps.realized, 4), unrealized=round(ps.unrealized(mid), 4),
+                pnl=round(ps.realized + ps.unrealized(mid) + ps.rewards, 4),
                 share=round(share, 4), est_reward_day=round(share * m.reward_daily, 4),
                 status="pauze" if paused else ("stopt (einde nadert)" if ending else ("quote" if (bo or ao) else "wacht")),
                 paused_until=self.paused_until.get(m.condition_id) if paused else None,
@@ -141,10 +147,12 @@ class PaperBot:
                 w = csv.writer(f)
                 for fl in new:
                     w.writerow([time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(fl.ts)), names.get(fl.market, fl.market),
-                                fl.side, fl.price, round(fl.size, 2), fl.reason])
+                                fl.side, fl.price, round(fl.size, 2), fl.reason,
+                                round(fl.realized, 4), round(fl.pos_after, 2), round(fl.avg_after, 4)])
                     print(f"  * FILL {fl.side.upper():3} {fl.size:7.1f} @ {fl.price:.3f}  {names.get(fl.market)} ({fl.reason})")
                     self.events.emit("fill", m=names.get(fl.market, fl.market), side=fl.side, price=fl.price,
-                                     size=round(fl.size, 2), reason=fl.reason)
+                                     size=round(fl.size, 2), reason=fl.reason, realized=round(fl.realized, 4),
+                                     pos=round(fl.pos_after, 2), avg=round(fl.avg_after, 4))
             self._n_logged_fills = len(self.ex.fills)
         inv = self.ex.inventory_value(self.mids)
         rew = self.ex.total_rewards()
@@ -165,7 +173,9 @@ class PaperBot:
             "mode": "paper", "start_cash": self.ex.start_cash, "cash": round(self.ex.cash, 4),
             "inventory": round(inv, 4), "equity": round(eq, 4), "rewards": round(rew, 5),
             "pnl_trading": round(pnl_trading, 4), "pnl_total": round(pnl_trading + rew, 4),
-            "n_fills": self._n_logged_fills,
+            "n_fills": self._fills_before + self._n_logged_fills,
+            "realized": round(sum(p.realized for p in self.ex.pos.values()), 4),
+            "unrealized": round(sum(p.unrealized(self.mids.get(c, p.last_mid)) for c, p in self.ex.pos.items()), 4),
             "reserved": round(self.ex.reserved(), 4),
             "settings": {
                 "size": self.scfg.order_size, "max_pos": self.scfg.max_position, "spread_frac": self.scfg.spread_frac,
