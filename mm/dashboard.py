@@ -394,7 +394,12 @@ def serve(log_dir: str, host: str, port: int, scfg: StrategyConfig, filters: Fil
     threading.Thread(target=hub.tail_events, daemon=True).start()
     if scan_every > 0:
         threading.Thread(target=hub.scanner_loop, daemon=True).start()
-    srv = ThreadingHTTPServer((host, port), make_handler(hub))
+    try:
+        srv = ThreadingHTTPServer((host, port), make_handler(hub))
+    except OSError as e:
+        print(f"Poort {port} is niet beschikbaar ({e.strerror}). Kies een andere poort met --port "
+              f"(of op de Mac: DASH_PORT=8791 ./mac/bot.sh apply).")
+        raise SystemExit(2)
     srv.daemon_threads = True
     shown = "localhost" if host in ("127.0.0.1", "0.0.0.0") else host
     print(f"Dashboard: http://{shown}:{port}  (logmap: {os.path.abspath(log_dir)})")

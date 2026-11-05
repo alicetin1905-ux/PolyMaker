@@ -48,7 +48,7 @@ def main(argv: list[str] | None = None) -> int:
     strat_args(d)
     d.add_argument("--log-dir", default="logs")
     d.add_argument("--host", default="127.0.0.1", help="0.0.0.0 = ook bereikbaar vanaf je telefoon in je wifi")
-    d.add_argument("--port", type=int, default=8787)
+    d.add_argument("--port", type=int, default=8790)
     d.add_argument("--scan-every", type=float, default=30, help="marktscanner elke N minuten (0 = uit)")
 
     pb = sub.add_parser("publish", help="online versie van het dashboard naar GitHub Pages sturen")

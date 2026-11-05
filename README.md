@@ -36,7 +36,7 @@ Een live webdashboard naast de bot:
   - Bot: resultaatgrafiek, posities, instellingen, fills en logboek
 
 ```bash
-python -m mm dashboard                  # http://localhost:8787
+python -m mm dashboard                  # http://localhost:8790
 python -m mm dashboard --host 0.0.0.0   # ook bereikbaar vanaf je telefoon in je wifi
 ```
 Op de Mac start het dashboard automatisch mee met `./mac/bot.sh install`. `./mac/bot.sh dashboard` opent het en toont het adres voor je telefoon.
@@ -85,7 +85,7 @@ Je geeft alleen op wat je wilt wijzigen. Instellingen worden onthouden in `bot.c
 | `SIZE` | 50 | aandelen per order (per kant)* | apply |
 | `MAX_POS` | 150 | max netto positie per markt (aandelen) | apply |
 | `SPREAD` | 0.5 | afstand tot mid als deel van de beloningsband (0.05-1.0): hoger = veiliger, minder beloning | apply |
-| `DASH_PORT` | 8787 | poort van het dashboard | apply |
+| `DASH_PORT` | 8790 | poort van het dashboard (bezet? kies een andere) | apply |
 | `DASH_LAN` | 1 | 1 = dashboard ook via wifi (telefoon), 0 = alleen deze Mac | apply |
 | `PAGES_EVERY` | 10 | online versie elke N minuten bijwerken (min. 6) | apply |
 

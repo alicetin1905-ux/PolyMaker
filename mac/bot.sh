@@ -21,7 +21,7 @@
 #   MAX_POS=150     max netto positie per markt (aandelen)   -> werkt ook met apply
 #   SPREAD=0.5      afstand tot mid, deel van de beloningsband (0.1-1.0) -> werkt ook met apply
 #   MIN_DAYS=30     sla markten over die binnen N dagen eindigen -> werkt bij install/reset
-#   DASH_PORT=8787  poort van het dashboard                  -> werkt ook met apply
+#   DASH_PORT=8790  poort van het dashboard                  -> werkt ook met apply
 #   DASH_LAN=1      1 = dashboard ook via je wifi (telefoon), 0 = alleen deze Mac -> werkt ook met apply
 #   PAGES_EVERY=10  online versie elke N minuten bijwerken (minimaal 6) -> werkt ook met apply
 # Voorbeeld:  SIZE=30 MAX_POS=100 ./mac/bot.sh apply
@@ -42,7 +42,7 @@ KEYS="BANKROLL MARKETS SIZE MAX_POS SPREAD MIN_DAYS DASH_PORT DASH_LAN PAGES_EVE
 
 # ---- settings: defaults < bot.conf < environment --------------------------
 for k in $KEYS; do eval "ENV_$k=\"\${$k:-}\""; done
-BANKROLL=1000; MARKETS=12; SIZE=50; MAX_POS=150; SPREAD=0.5; MIN_DAYS=30; DASH_PORT=8787; DASH_LAN=1; PAGES_EVERY=10
+BANKROLL=1000; MARKETS=12; SIZE=50; MAX_POS=150; SPREAD=0.5; MIN_DAYS=30; DASH_PORT=8790; DASH_LAN=1; PAGES_EVERY=10
 # shellcheck disable=SC1090
 [ -f "$CONF" ] && . "$CONF"
 for k in $KEYS; do
@@ -159,6 +159,23 @@ write_pages_plist() {
 PLIST_END
 }
 
+port_owner() {  # prints the process listening on DASH_PORT (empty if free)
+  lsof -nP -iTCP:"$DASH_PORT" -sTCP:LISTEN 2>/dev/null | awk 'NR>1 {print $1" (pid "$2")"; exit}'
+}
+
+dash_restart() {  # (re)write and start the dashboard, unless another program holds the port
+  dash_stop
+  write_dash_plist
+  local owner
+  owner="$(port_owner)"
+  if [ -n "$owner" ]; then
+    echo "!! Poort $DASH_PORT is al bezet door $owner: dashboard NIET gestart."
+    echo "   Kies een vrije poort, bijvoorbeeld:  DASH_PORT=8791 ./mac/bot.sh apply"
+    return 0
+  fi
+  dash_start
+}
+
 pages_loaded() { launchctl print "$DOMAIN/$PLABEL" >/dev/null 2>&1; }
 pages_start() { if [ -f "$PPLIST" ] && ! pages_loaded; then launchctl bootstrap "$DOMAIN" "$PPLIST"; fi; }
 pages_stop() { if pages_loaded; then launchctl bootout "$DOMAIN/$PLABEL" || true; fi; }
@@ -230,7 +247,7 @@ case "${1:-}" in
     show_conf
     echo
     start
-    dash_stop; write_dash_plist; dash_start
+    dash_restart
     echo
     echo "Dashboard:"
     dash_urls
@@ -250,7 +267,7 @@ case "${1:-}" in
     echo "(BANKROLL, MARKETS en MIN_DAYS gelden pas na './mac/bot.sh reset')"
     echo
     start
-    dash_stop; write_dash_plist; dash_start
+    dash_restart
     pages_refresh
     ;;
   start) start; dash_start; pages_start ;;
@@ -312,7 +329,7 @@ case "${1:-}" in
     show_conf
     echo
     start
-    dash_stop; write_dash_plist; dash_start
+    dash_restart
     pages_refresh
     ;;
   uninstall)
