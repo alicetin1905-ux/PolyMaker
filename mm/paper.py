@@ -73,6 +73,28 @@ class Position:
     last_mid: float | None = None
     avg: float = 0.0  # average entry price of the net position (YES terms)
     realized: float = 0.0  # P&L locked in by closing trades
+    slug: str = ""
+    question: str = ""
+    blocked_until: float = 0.0  # loss limit / toxic fills: only exit the position until then
+    block_reason: str = ""
+    loss_base: float = 0.0  # trading P&L when the market was (re)admitted; the loss limit counts from here
+    mk: dict = field(default_factory=dict)  # markouts: {"60": [sum_cents*size, size, n], "300": [...]}
+
+    def trading_pnl(self, mid: float | None) -> float:
+        return self.realized + self.unrealized(mid)
+
+    def add_markout(self, horizon: int, cents: float, size: float) -> None:
+        a = self.mk.setdefault(str(horizon), [0.0, 0.0, 0])
+        a[0] += cents * size
+        a[1] += size
+        a[2] += 1
+
+    def markout(self, horizon: int) -> tuple[float | None, int]:
+        """Size-weighted average markout in cents, and the number of fills measured."""
+        a = self.mk.get(str(horizon))
+        if not a or a[1] <= 0:
+            return None, 0
+        return a[0] / a[1], a[2]
 
     def unrealized(self, mid: float | None) -> float:
         net = self.yes - self.no
@@ -219,7 +241,9 @@ class PaperExchange:
             "cash": self.cash,
             "positions": {
                 cid: {"yes": ps.yes, "no": ps.no, "rewards": ps.rewards, "last_mid": ps.last_mid,
-                      "avg": ps.avg, "realized": ps.realized}
+                      "avg": ps.avg, "realized": ps.realized, "slug": ps.slug, "question": ps.question,
+                      "blocked_until": ps.blocked_until, "block_reason": ps.block_reason,
+                      "loss_base": ps.loss_base, "mk": ps.mk}
                 for cid, ps in self.pos.items()
             },
         }
@@ -231,6 +255,9 @@ class PaperExchange:
             ps = self.p(cid)
             ps.yes, ps.no, ps.rewards, ps.last_mid = v["yes"], v["no"], v["rewards"], v.get("last_mid")
             ps.avg, ps.realized = v.get("avg", 0.0), v.get("realized", 0.0)
+            ps.slug, ps.question = v.get("slug", ""), v.get("question", "")
+            ps.blocked_until, ps.block_reason = v.get("blocked_until", 0.0), v.get("block_reason", "")
+            ps.loss_base, ps.mk = v.get("loss_base", 0.0), v.get("mk", {})
         self.needs_rebuild = any("avg" not in v for v in d.get("positions", {}).values())
 
     def rebuild_cost_basis(self, fills: list[tuple[str, str, float, float]]) -> None:

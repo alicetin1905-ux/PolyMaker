@@ -88,6 +88,8 @@ Je geeft alleen op wat je wilt wijzigen. Instellingen worden onthouden in `bot.c
 | `DASH_PORT` | 8790 | poort van het dashboard (bezet? kies een andere) | apply |
 | `DASH_LAN` | 1 | 1 = dashboard ook via wifi (telefoon), 0 = alleen deze Mac | apply |
 | `PAGES_EVERY` | 10 | online versie elke N minuten bijwerken (min. 6) | apply |
+| `MAX_LOSS` | 3 | blokkeer een markt 24 uur na zoveel dollar handelsverlies (0 = uit) | apply |
+| `ROTATE_HOURS` | 24 | elke N uur betere markten zoeken (0 = uit) | apply |
 
 \* Eist een markt meer aandelen voor de beloning (bijvoorbeeld 100), dan gebruikt de bot dat minimum.
 
@@ -118,7 +120,18 @@ Python 3.9 of nieuwer is nodig. Heb je dat nog niet: `xcode-select --install`.
    en verschuift die op basis van je positie (voorraadbeheer).
 3. **Paper exchange**: je order sluit achteraan in de wachtrij aan en wordt alleen
    gevuld als er echt gehandeld wordt tegen of door jouw prijs.
-4. **Risico**: maximale positie, noodstop bij koerssprongen, geen markten vlak voor de uitslag.
+4. **Risico**: maximale positie, noodstop bij koerssprongen, geen markten vlak voor de uitslag, plus:
+   - **Verliesgrens per markt** (`--max-loss`, standaard $3): verliest een markt meer, dan zet de bot daar
+     24 uur alleen nog orders die de positie verkleinen ("alleen uitstappen").
+   - **Giftige fills**: elke fill wordt na 1 en 5 minuten opnieuw gewaardeerd tegen de middenprijs
+     (`logs/markouts.csv`). Staan de fills in een markt na 5 minuten gemiddeld meer dan 1¢ per aandeel
+     tegen je (over minstens 5 fills), dan wordt die markt ook 24 uur geblokkeerd (`--toxic-cents`).
+   - **Afstand bij onrust** (`--vol-factor`, standaard 0,5): de orders staan minstens de helft van de
+     koersuitslag van de afgelopen 10 minuten van de middenprijs (maximaal 2× de beloningsband).
+     In een onrustige markt staat de agressieve stand (`--join`) niet vooraan.
+5. **Markten verversen** (`--rotate-hours`, standaard 24): de scanner zoekt op de achtergrond opnieuw.
+   Markten zonder positie die niet meer bij de besten horen of geblokkeerd zijn, worden vervangen.
+   Markten met een positie blijven tot de positie weg is. Uit bij `--slug`.
 
 Logs komen in `logs/` (`fills.csv`, `equity.csv`, `state.json`).
 

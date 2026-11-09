@@ -24,6 +24,8 @@
 #   DASH_PORT=8790  poort van het dashboard                  -> werkt ook met apply
 #   DASH_LAN=1      1 = dashboard ook via je wifi (telefoon), 0 = alleen deze Mac -> werkt ook met apply
 #   PAGES_EVERY=10  online versie elke N minuten bijwerken (minimaal 6) -> werkt ook met apply
+#   MAX_LOSS=3      blokkeer een markt 24 uur na zoveel dollar verlies (0 = uit) -> werkt ook met apply
+#   ROTATE_HOURS=24 elke N uur betere markten zoeken (0 = uit) -> werkt ook met apply
 # Voorbeeld:  SIZE=30 MAX_POS=100 ./mac/bot.sh apply
 set -euo pipefail
 
@@ -38,11 +40,11 @@ PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 DPLIST="$HOME/Library/LaunchAgents/$DLABEL.plist"
 PPLIST="$HOME/Library/LaunchAgents/$PLABEL.plist"
 DOMAIN="gui/$(id -u)"
-KEYS="BANKROLL MARKETS SIZE MAX_POS SPREAD MIN_DAYS DASH_PORT DASH_LAN PAGES_EVERY"
+KEYS="BANKROLL MARKETS SIZE MAX_POS SPREAD MIN_DAYS DASH_PORT DASH_LAN PAGES_EVERY MAX_LOSS ROTATE_HOURS"
 
 # ---- settings: defaults < bot.conf < environment --------------------------
 for k in $KEYS; do eval "ENV_$k=\"\${$k:-}\""; done
-BANKROLL=1000; MARKETS=12; SIZE=50; MAX_POS=150; SPREAD=0.5; MIN_DAYS=30; DASH_PORT=8790; DASH_LAN=1; PAGES_EVERY=10
+BANKROLL=1000; MARKETS=12; SIZE=50; MAX_POS=150; SPREAD=0.5; MIN_DAYS=30; DASH_PORT=8790; DASH_LAN=1; PAGES_EVERY=10; MAX_LOSS=3; ROTATE_HOURS=24
 # shellcheck disable=SC1090
 [ -f "$CONF" ] && . "$CONF"
 for k in $KEYS; do
@@ -77,6 +79,8 @@ show_conf() {
   echo "  Max positie (MAX_POS):     $MAX_POS aandelen per markt"
   echo "  Afstand tot mid (SPREAD):  $SPREAD x beloningsband"
   echo "  Min. looptijd (MIN_DAYS):  $MIN_DAYS dagen"
+  echo "  Verliesgrens (MAX_LOSS):   \$$MAX_LOSS per markt (0 = uit)"
+  echo "  Verversen (ROTATE_HOURS):  elke $ROTATE_HOURS uur (0 = uit)"
   if [ "$DASH_LAN" = 1 ]; then echo "  Dashboard:                 poort $DASH_PORT, ook via wifi"; else echo "  Dashboard:                 poort $DASH_PORT, alleen deze Mac"; fi
 }
 
@@ -110,6 +114,8 @@ write_dash_plist() {
     <string>--max-pos</string><string>$MAX_POS</string>
     <string>--spread-frac</string><string>$SPREAD</string>
     <string>--min-days</string><string>$MIN_DAYS</string>
+    <string>--max-loss</string><string>$MAX_LOSS</string>
+    <string>--rotate-hours</string><string>$ROTATE_HOURS</string>
   </array>
   <key>WorkingDirectory</key><string>$DIR</string>
   <key>EnvironmentVariables</key><dict><key>PYTHONUNBUFFERED</key><string>1</string></dict>
@@ -340,7 +346,7 @@ case "${1:-}" in
     echo "Automatisch starten verwijderd. Resultaten staan nog in $LOGS"
     ;;
   *)
-    sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,29p' "$0" | sed 's/^# \{0,1\}//'
     exit 1
     ;;
 esac

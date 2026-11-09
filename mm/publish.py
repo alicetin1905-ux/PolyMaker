@@ -18,7 +18,7 @@ from .dashboard import RANGES, WEB_DIR, Hub
 from .scanner import Filters
 from .strategy import StrategyConfig
 
-KEEP_EVENTS = {"fill", "trades", "pause", "candidate", "scan_done", "error"}
+KEEP_EVENTS = {"fill", "trades", "pause", "candidate", "scan_done", "error", "block", "unblock", "rotate"}
 MAX_HISTORY = 1500  # points per market chart
 MIN_EVERY = 360  # GitHub Pages rebuilds at most ~10x per hour
 STATIC_FLAG = "<script>window.POLYMAKER_STATIC = true;</script>"

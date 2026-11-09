@@ -127,19 +127,28 @@ class Hub:
             except FileNotFoundError:
                 pass
 
+    HISTORY_TYPES = {"fill", "trades", "pause", "block", "unblock", "rotate", "candidate", "scan_done", "error"}
+
     def tail_events(self) -> None:
         path = os.path.join(self.log_dir, "events.jsonl")
-        # history: older rotated file + current file (mid history only)
+        # history: older rotated file + current file. Builds the mid history, and keeps the last
+        # important events so the activity feed is not empty after a restart of the dashboard.
+        recent: deque = deque(maxlen=300)
         for p in (path + ".1", path):
             try:
                 with open(p) as f:
                     for line in f:
                         try:
-                            self._ingest(json.loads(line), live=False)
+                            ev = json.loads(line)
                         except ValueError:
-                            pass
+                            continue
+                        self._ingest(ev, live=False)
+                        if ev.get("type") in self.HISTORY_TYPES:
+                            recent.append(ev)
             except FileNotFoundError:
                 pass
+        for ev in recent:
+            self._push(ev)
         f, ino = None, None
         pos = os.path.getsize(path) if os.path.exists(path) else 0
         while True:

@@ -760,6 +760,27 @@ function handleEvent(ev, quiet = false) {
     case "error":
       feedPush(ev, COLORS.crit, `<b>Fout</b> ${esc(ev.msg)}`);
       break;
+    case "block":
+      if (home) pulse("signal", COLORS.crit, { size: 5.5, trail: 8 });
+      feedPush(ev, COLORS.crit, `⛔ <b>Markt geblokkeerd</b> (${esc(ev.reason)}): ${esc(nameOf(m))} · ${esc(ev.detail || "")} · tot ${ddmm(ev.until)} ${hhmm(ev.until)} alleen nog uitstappen`);
+      refreshSnap();
+      break;
+    case "unblock":
+      feedPush(ev, COLORS.signal, `Blokkade opgeheven: <b>${esc(nameOf(m))}</b> doet weer mee`);
+      break;
+    case "rotate_start":
+      feedPush(ev, COLORS.cand, `Markten verversen: de bot zoekt betere markten…`);
+      break;
+    case "rotate": {
+      for (const [k, q] of Object.entries(ev.questions || {})) S.qNames[k] = S.qNames[k] || q;
+      if (home && (ev.into || []).length) pulse("cand", COLORS.cand, { size: 5, dur: 1400 });
+      const outs = (ev.out || []).map(x => esc(nameOf(x))), ins = (ev.into || []).map(x => esc(nameOf(x)));
+      feedPush(ev, COLORS.cand, outs.length || ins.length
+        ? `<b>Markten ververst</b>${outs.length ? ` · eruit: ${outs.join(", ")}` : ""}${ins.length ? ` · erin: ${ins.join(", ")}` : ""}`
+        : `Markten ververst: de huidige markten zijn nog steeds de beste`);
+      refreshSnap();
+      break;
+    }
   }
 }
 
@@ -980,7 +1001,7 @@ views.home = {
         if (row) { $(".mid", row).textContent = cents(m.mid); $(".sp", row).innerHTML = sparkSVG(snap?.sparks?.[m.slug]); }
         const sl = $(`.slot[data-slug="${CSS.escape(m.slug)}"]`);
         if (sl) {
-          $(".q", sl).innerHTML = m.status === "pauze" ? `<span style="color:var(--warn)">⏸ pauze</span>` :
+          $(".q", sl).innerHTML = m.status === "geblokkeerd" ? `<span style="color:var(--crit-text)" title="${esc(blockText(m))}">⛔ ${esc(m.block_reason || "geblokkeerd")}</span>` : m.status === "pauze" ? `<span style="color:var(--warn)">⏸ pauze</span>` :
             `B <b>${m.bid ? cents(m.bid[0]) : "–"}</b> · L <b>${m.ask ? cents(m.ask[0]) : "–"}</b>`;
           const i = $(".posbar i", sl), f = Math.max(-1, Math.min(1, (m.net || 0) / maxPos));
           i.style.background = f >= 0 ? COLORS.signal : COLORS.fillSell;
@@ -1014,15 +1035,16 @@ views.polymarket = {
         <h2>Bot-markten</h2>
         <div class="tw"><table><thead><tr>
           <th>Markt</th><th class="r">Mid</th><th class="r">Boek</th><th class="r">Ons bod</th><th class="r">Onze laat</th>
-          <th class="r">Positie</th><th class="r">Beloning/dag</th><th class="r">Pool</th><th class="r">Dagen</th><th>Status</th>
+          <th class="r">Positie</th><th class="r">Onrust</th><th class="r">Afstand</th><th class="r">Giftig (5m)</th><th class="r">Beloning/dag</th><th class="r">Dagen</th><th>Status</th>
         </tr></thead><tbody id="bm"></tbody></table></div>
-        <div class="note">Beloning/dag = geschat aandeel van de dagelijkse liquidity-rewardpool met de huidige orders. Klik op een markt voor details.</div>
+        <div class="note">Onrust = hoeveel de koers de afgelopen 10 minuten heen en weer ging; hoe onrustiger, hoe groter de afstand van onze orders tot de middenprijs. Giftig = wat fills 5 minuten later waard waren (negatief = de koers ging tegen ons in). Beloning/dag = geschat aandeel in de rewardpool. Klik op een markt voor details.</div>
+        <div class="note" id="rotinfo"></div>
       </section>
       <section class="two" style="margin-bottom:14px">
         <div class="card"><h2>Kansen uit de marktscanner</h2><div class="tw"><table><thead><tr>
           <th>#</th><th>Markt</th><th class="r">$/dag</th><th class="r">per $100</th><th class="r">Aandeel</th><th class="r">Mid</th><th class="r">Vol/dag</th><th class="r">Dagen</th>
         </tr></thead><tbody id="cands"></tbody></table></div>
-        <div class="note">De bot wisselt niet zelf van markt: na <code>./mac/bot.sh reset</code> kiest hij de beste kansen opnieuw.</div></div>
+        <div class="note">De bot ververst zijn markten zelf (standaard elke 24 uur): markten zonder positie die niet meer bij de besten horen of geblokkeerd zijn, worden vervangen door de beste kansen.</div></div>
         <div class="card"><h2>Scanner</h2><div id="scanbox"><div class="row1" style="display:flex;justify-content:space-between;gap:8px;margin-bottom:8px;font-size:12px"><span class="st-text">–</span><span class="st-right muted"></span></div><div class="bar idle"><i></i></div></div>
           <h2 style="margin-top:18px">Waarom markten afvallen</h2><div id="rej"></div></div>
       </section>`;
@@ -1037,8 +1059,13 @@ views.polymarket = {
       <td class="r num">${m.bid ? `${cents(m.bid[0])} <span class="muted">×${n0(m.bid[1])}</span>` : "–"}</td>
       <td class="r num">${m.ask ? `${cents(m.ask[0])} <span class="muted">×${n0(m.ask[1])}</span>` : "–"}</td>
       <td class="r num">${Math.abs(m.net) < 0.01 ? "–" : (m.net > 0 ? "JA " : "NEE ") + n0(Math.abs(m.net))}</td>
-      <td class="r num">${usd(m.est_reward_day)}</td><td class="r num muted">${usd(m.reward_daily)}</td>
-      <td class="r num">${n0(m.days_left)}</td><td>${statusHTML(m.status)}</td></tr>`).join("") || `<tr><td colspan="10"><div class="empty">Geen gegevens van de bot.</div></td></tr>`;
+      <td class="r num">${m.unrest == null ? "–" : NF1.format(m.unrest * 100) + "¢"}</td><td class="r num">${m.dist == null ? "–" : NF1.format(m.dist * 100) + "¢"}</td>
+      <td class="r">${toxHTML(m.mk5, m.mk_n)}</td>
+      <td class="r num">${usd(m.est_reward_day)}</td>
+      <td class="r num">${n0(m.days_left)}</td><td title="${esc(blockText(m))}">${statusHTML(m.status)}</td></tr>`).join("") || `<tr><td colspan="12"><div class="empty">Geen gegevens van de bot.</div></td></tr>`;
+    const R = L?.rotation, st2 = L?.settings || {};
+    $("#rotinfo").innerHTML = !st2.rotate_hours ? "Markten verversen staat uit." : R?.scanning ? "Markten verversen: de scanner zoekt nu betere markten…"
+      : `Markten verversen: elke ${hoursText(st2.rotate_hours)}${R?.last ? ` · laatst ${ddmm(R.last)} ${hhmm(R.last)}` : ""}${R?.next ? ` · volgende ${R.next > serverNow() ? "over " + dur(R.next - serverNow()) : "zo"}` : ""}.`;
     this.bindRows(bm);
     api("/api/scan").then(full => {
       const tb = $("#cands"); if (!tb || !$("#rej")) return;
@@ -1058,8 +1085,16 @@ views.polymarket = {
   bindRows(tb) { $$("tr.click", tb).forEach(tr => tr.onclick = () => location.hash = "#/markt/" + encodeURIComponent(tr.dataset.slug)); },
 };
 
+// markout: what a fill was worth 5 minutes later, in cents per share (negative = price moved against us)
+function toxHTML(c, n) {
+  if (c == null || !n) return `<span class="muted">–</span>`;
+  const k = c < -1 ? "neg" : c > 0.25 ? "pos" : "";
+  return `<span class="num ${k}">${c > 0 ? "+" : c < 0 ? "−" : ""}${NF1.format(Math.abs(c))}¢</span> <span class="muted">(${n})</span>`;
+}
+const hoursText = h => h >= 1 ? `${NF0.format(h)} uur` : `${Math.max(1, Math.round(h * 60))} min`;
+const blockText = m => m.blocked_until ? `${m.block_reason || "geblokkeerd"}, tot ${ddmm(m.blocked_until)} ${hhmm(m.blocked_until)}` : "";
 function statusHTML(s) {
-  const map = { quote: ["on", "quote"], pauze: ["warn", "pauze"], wacht: ["", "wacht"], "geen boek": ["off", "geen boek"] };
+  const map = { quote: ["on", "quote"], pauze: ["warn", "pauze"], wacht: ["", "wacht"], "geen boek": ["off", "geen boek"], geblokkeerd: ["off", "geblokkeerd"], "uit rotatie": ["", "uit rotatie"] };
   const [c, t] = map[s] || ["warn", s || "–"];
   return `<span class="st"><span class="led ${c}" style="width:7px;height:7px;${c === "on" ? "animation:none" : ""}"></span>${esc(t)}</span>`;
 }
@@ -1103,6 +1138,9 @@ views.market = {
       k("Handel in deze markt", usd((m.realized || 0) + (m.unrealized || 0), true), `gerealiseerd ${usd(m.realized || 0, true)} · open ${usd(m.unrealized || 0, true)}`, cls((m.realized || 0) + (m.unrealized || 0))),
       k("Beloning verdiend", usd3(m.rewards), "schatting"),
       k("Aandeel in pool", pct(m.share), `≈ ${usd(m.est_reward_day)}/dag`),
+      k("Giftigheid fills", m.mk_n ? `${m.mk5 > 0 ? "+" : m.mk5 < 0 ? "−" : ""}${NF1.format(Math.abs(m.mk5))}¢` : "–", m.mk_n ? `na 5 min, ${m.mk_n} fills${m.mk1 != null ? ` · na 1 min ${NF1.format(m.mk1)}¢` : ""}` : "nog niet gemeten", m.mk_n ? (m.mk5 < -1 ? "neg" : m.mk5 > 0.25 ? "pos" : "") : ""),
+      k("Onrust → afstand", `${NF1.format((m.unrest || 0) * 100)}¢ → ${NF1.format((m.dist || 0) * 100)}¢`, "koersuitslag 10 min → afstand van onze orders"),
+      k("Verliesgrens", m.blocked_until ? "geblokkeerd" : usd(m.loss_since, true), m.blocked_until ? blockText(m) : `handel sinds toelating · grens −${usd(S.live?.settings?.max_loss || 0)}`, m.blocked_until ? "neg" : cls(m.loss_since)),
       k("Handel gezien", n0(m.trades_seen), "sinds de bot (her)startte"),
       k("Fills", n0(d.fills.length), ""),
     ].join("") : c ? [
@@ -1156,8 +1194,8 @@ views.bot = {
         <div class="chart" id="bchart"></div>
       </section>
       <section class="two" style="margin-bottom:14px">
-        <div class="card"><h2>Resultaat per markt</h2><div class="tw"><table><thead><tr><th>Markt</th><th class="r">Positie</th><th class="r">Gekocht @</th><th class="r">Nu</th><th class="r">Open</th><th class="r">Gerealiseerd</th><th class="r">Beloning</th><th class="r">Totaal</th></tr></thead><tbody id="bpos"></tbody></table></div>
-          <div class="note">Open = winst/verlies op de positie die er nog staat (tegen de middenprijs). Gerealiseerd = vastgelegd door posities te sluiten. Totaal = open + gerealiseerd + beloning.</div></div>
+        <div class="card"><h2>Resultaat per markt</h2><div class="tw"><table><thead><tr><th>Markt</th><th class="r">Positie</th><th class="r">Gekocht @</th><th class="r">Nu</th><th class="r">Open</th><th class="r">Gerealiseerd</th><th class="r">Beloning</th><th class="r">Totaal</th><th class="r">Giftig (5m)</th><th>Status</th></tr></thead><tbody id="bpos"></tbody></table></div>
+          <div class="note">Open = winst/verlies op de positie die er nog staat (tegen de middenprijs). Gerealiseerd = vastgelegd door posities te sluiten. Totaal = open + gerealiseerd + beloning. Giftig = gemiddeld wat een fill 5 minuten later waard was, in cent per aandeel (tussen haakjes: aantal gemeten fills). Geblokkeerd = verliesgrens geraakt of giftige fills: 24 uur alleen nog uitstappen.</div></div>
         <div class="card"><h2>Instellingen</h2><dl class="kv" id="bset"></dl><div class="note">Wijzigen op de Mac: <code>SIZE=30 MAX_POS=100 ./mac/bot.sh apply</code></div></div>
       </section>
       <section class="two">
@@ -1204,25 +1242,30 @@ views.bot = {
       k("Looptijd", dur(up), `${n0(L.ticks)} ticks · elke ${L.interval}s`),
       k("Laatste tick", hhmmss(L.updated), botOnline() ? "bot is live" : "bot offline", botOnline() ? "" : "neg"),
     ].join("");
-    const rows = L.markets.slice().sort((a, b) => (a.pnl ?? 0) - (b.pnl ?? 0));
+    const rows = L.markets.concat(L.retired || []).sort((a, b) => (a.pnl ?? 0) - (b.pnl ?? 0));
     const sum = k => rows.reduce((t, m) => t + (m[k] || 0), 0);
     const td = v => `<td class="r num ${cls(v)}">${usd(v, true)}</td>`;
     $("#bpos").innerHTML = rows.map(m => `<tr class="click" data-slug="${esc(m.slug)}"><td style="max-width:240px;overflow:hidden;text-overflow:ellipsis">${esc(shortQ(m.question))}</td>
       <td class="r num">${Math.abs(m.net) < 0.01 ? "–" : `${n0(Math.abs(m.net))} ${m.net > 0 ? "JA" : "NEE"}`}</td>
       <td class="r num">${Math.abs(m.net) < 0.01 ? "–" : cents(m.net > 0 ? m.avg : 1 - m.avg)}</td><td class="r num">${Math.abs(m.net) < 0.01 ? cents(m.mid) : cents(m.net > 0 ? m.mid : 1 - m.mid)}</td>
-      ${td(m.unrealized)}${td(m.realized)}${td(m.rewards)}${td(m.pnl)}</tr>`).join("")
-      + `<tr class="tot"><td>Totaal</td><td></td><td></td><td></td>${td(sum("unrealized"))}${td(sum("realized"))}${td(sum("rewards"))}${td(sum("pnl"))}</tr>`;
+      ${td(m.unrealized)}${td(m.realized)}${td(m.rewards)}${td(m.pnl)}<td class="r">${toxHTML(m.mk5, m.mk_n)}</td><td title="${esc(blockText(m))}">${statusHTML(m.status)}</td></tr>`).join("")
+      + `<tr class="tot"><td>Totaal</td><td></td><td></td><td></td>${td(sum("unrealized"))}${td(sum("realized"))}${td(sum("rewards"))}${td(sum("pnl"))}<td></td><td></td></tr>`;
     $$("#bpos tr.click").forEach(tr => tr.onclick = () => location.hash = "#/markt/" + encodeURIComponent(tr.dataset.slug));
     const s = L.settings || {};
     $("#bset").innerHTML = [
       ["Startbedrag", usd(L.start_cash)], ["Markten", L.markets.length], ["Ordergrootte", `${n0(s.size)} aandelen`],
       ["Max positie per markt", `${n0(s.max_pos)} aandelen`], ["Afstand tot mid", `${s.spread_frac} × beloningsband`],
       ["Noodstop bij sprong", `> ${NF1.format((s.kill_move || 0) * 100)}¢`], ["Pauze na noodstop", dur(s.cooldown || 0)], ["Interval", `${s.interval}s`],
+      ["Verliesgrens per markt", s.max_loss ? `${usd(s.max_loss)} → ${hoursText(s.block_hours)} blokkeren` : "uit"],
+      ["Giftige fills", s.toxic_cents ? `gem. < −${NF1.format(s.toxic_cents)}¢ na 5 min (min. ${s.toxic_min_fills} fills)` : "uit"],
+      ["Afstand bij onrust", s.vol_factor ? `≥ ${NF1.format(s.vol_factor * 100)}% van de koersuitslag (10 min)` : "uit"],
+      ["Markten verversen", s.rotate_hours ? `elke ${hoursText(s.rotate_hours)} (${n0(s.target_markets)} markten)` : "uit"],
+      ["Agressief (join)", s.join ? "aan" : "uit"],
     ].map(([a, b]) => `<dt>${a}</dt><dd>${esc(b)}</dd>`).join("");
   },
   onFeed() {
     const ul = $("#blog"); if (!ul) return;
-    const want = { alles: null, fills: ["fill"], signalen: ["trades", "pause"], scanner: ["candidate", "scan_done"], fouten: ["error"] }[this.filter];
+    const want = { alles: null, fills: ["fill"], signalen: ["trades", "pause", "block", "unblock"], scanner: ["candidate", "scan_done", "rotate", "rotate_start"], fouten: ["error"] }[this.filter];
     const rows = S.feed.filter(f => !want || want.includes(f.type)).slice(0, 120);
     ul.innerHTML = rows.map(f => `<li><span class="tm">${hhmmss(f.ts)}</span><span class="dot" style="background:${f.color}"></span><span class="tx">${f.html}</span></li>`).join("") || `<li style="display:block"><div class="empty">Niets in deze categorie (sinds het dashboard openging).</div></li>`;
   },

@@ -15,6 +15,7 @@ class StrategyConfig:
     max_position: float = 150.0  # max net YES (or NO) shares before we stop adding
     skew: float = 1.0  # how hard inventory shifts quotes (1.0 = up to one full quote-distance)
     join_best: bool = False  # aggressive: quote at (or one tick inside) the best bid/ask
+    vol_factor: float = 0.5  # quote at least this fraction of the recent price range away from the mid (0 = off)
     min_mid: float = 0.05  # don't quote markets that are basically decided
     max_mid: float = 0.95
 
@@ -26,6 +27,7 @@ class Quote:
     ask: float | None
     ask_size: float
     reason: str = ""
+    dist: float = 0.0  # distance from the mid that was used (price units)
 
 
 def round_down(p: float, tick: float) -> float:
@@ -42,6 +44,7 @@ def make_quote(
     max_spread_c: float,
     reward_min_size: float,
     cfg: StrategyConfig,
+    recent_range: float = 0.0,
 ) -> Quote:
     mid = book.mid
     if mid is None:
@@ -54,6 +57,10 @@ def make_quote(
     # distance from mid, in price units; stay inside the reward band
     band = max_spread_c / 100.0 if max_spread_c > 0 else 0.03
     dist = max(band * cfg.spread_frac, cfg.min_distance_ticks * tick)
+    # unrest: when the mid wandered a lot recently, stand further away (at most twice the reward band)
+    if cfg.vol_factor > 0 and recent_range > 0:
+        dist = min(max(dist, cfg.vol_factor * recent_range), max(dist, 2 * band))
+    restless = recent_range > 2.5 * tick
 
     # inventory skew: long YES -> shift both quotes down (sell more eagerly, buy less)
     inv = max(-1.0, min(1.0, net_yes / cfg.max_position)) if cfg.max_position > 0 else 0.0
@@ -65,7 +72,7 @@ def make_quote(
     # aggressive mode: stand at the front of the queue, or improve the price when the spread allows it.
     # Skip the side that would grow an already large position.
     bb, ba = book.best_bid, book.best_ask
-    if cfg.join_best and bb is not None and ba is not None:
+    if cfg.join_best and bb is not None and ba is not None and not restless:
         gap = round((ba - bb) / tick)  # spread in ticks
         if inv < 0.5:
             bid = max(bid, round(bb + tick, 6) if gap >= 2 else bb)
@@ -93,4 +100,4 @@ def make_quote(
         bid, bid_size = None, 0
     if ask is not None and ask >= 1:
         ask, ask_size = None, 0
-    return Quote(bid, bid_size, ask, ask_size, reason)
+    return Quote(bid, bid_size, ask, ask_size, reason, dist)

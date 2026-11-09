@@ -28,6 +28,7 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--max-jump", type=float, default=10.0, help="max grootste dagsprong (centen, laatste maand)")
         p.add_argument("--allow-risky", action="store_true", help="datumvenster- en sportmarkten niet uitsluiten")
         p.add_argument("--join", action="store_true", help="agressief: op of net vóór de beste prijs quoten (meer fills, meer risico)")
+        p.add_argument("--vol-factor", type=float, default=0.5, help="quote minstens dit deel van de recente koersuitslag van de mid (0 = uit)")
 
     s = sub.add_parser("scan", help="toon de beste markten voor liquidity rewards")
     strat_args(s)
@@ -44,6 +45,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--log-dir", default="logs")
     p.add_argument("--resume", action="store_true", help="ga verder met kas/posities/markten uit logs/state.json")
     p.add_argument("--print-every", type=int, default=1, help="status printen elke N ticks (fills altijd)")
+    p.add_argument("--max-loss", type=float, default=3.0, help="blokkeer een markt na zoveel dollar handelsverlies (0 = uit)")
+    p.add_argument("--block-hours", type=float, default=24.0, help="hoe lang een geblokkeerde markt alleen uitstapt")
+    p.add_argument("--toxic-cents", type=float, default=1.0, help="blokkeer als fills na 5 min gemiddeld meer dan X cent tegen je staan (0 = uit)")
+    p.add_argument("--toxic-min-fills", type=int, default=5, help="minimaal aantal gemeten fills voor het giftigheidsoordeel")
+    p.add_argument("--rotate-hours", type=float, default=24.0, help="elke N uur betere markten zoeken (0 = uit; uit bij --slug)")
 
     d = sub.add_parser("dashboard", help="web-dashboard (live) voor de bot")
     strat_args(d)
@@ -75,7 +81,8 @@ def main(argv: list[str] | None = None) -> int:
         return run(a.log_dir, a.site_dir, a.remote, a.branch, a.every * 60, a.once)
 
     api = PolymarketAPI()
-    scfg = StrategyConfig(order_size=a.size, spread_frac=a.spread_frac, max_position=a.max_pos, join_best=a.join)
+    scfg = StrategyConfig(order_size=a.size, spread_frac=a.spread_frac, max_position=a.max_pos, join_best=a.join,
+                          vol_factor=a.vol_factor)
 
     def filters(max_capital):
         return Filters(
@@ -138,8 +145,17 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Kostprijs herberekend uit {len(rows)} eerdere fills.")
         print(f"Hervat: kas ${ex.cash:.2f}, markten: {[m.slug for m in markets]}")
     print(f"\nPAPER TRADING met ${ex.start_cash:.0f} nepgeld op {len(markets)} markt(en). Ctrl-C om te stoppen.\n")
-    bcfg = BotConfig(interval=a.interval, hours=a.hours, log_dir=a.log_dir, print_every=a.print_every)
-    PaperBot(api, markets, ex, scfg, bcfg).run()
+    bcfg = BotConfig(interval=a.interval, hours=a.hours, log_dir=a.log_dir, print_every=a.print_every,
+                     max_loss=a.max_loss, block_hours=a.block_hours, toxic_cents=a.toxic_cents,
+                     toxic_min_fills=a.toxic_min_fills, rotate_hours=a.rotate_hours,
+                     target_markets=len(markets) if a.slug else a.markets)
+
+    def rescan():  # runs in a background thread: own API session
+        found = scan(PolymarketAPI(), scfg, filters(a.bankroll / max(1, a.markets)), want=2 * a.markets, verbose=False)
+        return [c.market for c in found]
+
+    PaperBot(api, markets, ex, scfg, bcfg, rescan=None if a.slug else rescan,
+             last_rotation=(saved or {}).get("last_rotation")).run()
     return 0
 
 
