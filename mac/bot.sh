@@ -114,8 +114,6 @@ write_dash_plist() {
     <string>--max-pos</string><string>$MAX_POS</string>
     <string>--spread-frac</string><string>$SPREAD</string>
     <string>--min-days</string><string>$MIN_DAYS</string>
-    <string>--max-loss</string><string>$MAX_LOSS</string>
-    <string>--rotate-hours</string><string>$ROTATE_HOURS</string>
   </array>
   <key>WorkingDirectory</key><string>$DIR</string>
   <key>EnvironmentVariables</key><dict><key>PYTHONUNBUFFERED</key><string>1</string></dict>
@@ -208,6 +206,8 @@ write_plist() {
     <string>--max-pos</string><string>$MAX_POS</string>
     <string>--spread-frac</string><string>$SPREAD</string>
     <string>--min-days</string><string>$MIN_DAYS</string>
+    <string>--max-loss</string><string>$MAX_LOSS</string>
+    <string>--rotate-hours</string><string>$ROTATE_HOURS</string>
     <string>--print-every</string><string>20</string>
     <string>--log-dir</string><string>$LOGS</string>
   </array>

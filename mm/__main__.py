@@ -13,7 +13,7 @@ from .scanner import Filters, print_table, scan
 from .strategy import StrategyConfig
 
 
-def main(argv: list[str] | None = None) -> int:
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="python -m mm", description="Polymarket market-making bot (alleen paper trading)")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
@@ -69,7 +69,11 @@ def main(argv: list[str] | None = None) -> int:
     r = sub.add_parser("report", help="samenvatting van een paper-run")
     r.add_argument("--log-dir", default="logs")
 
-    a = ap.parse_args(argv)
+    return ap
+
+
+def main(argv: list[str] | None = None) -> int:
+    a = build_parser().parse_args(argv)
     if a.cmd == "report":
         d = a.log_dir
         print_report(os.path.join(d, "state.json"), os.path.join(d, "equity.csv"), os.path.join(d, "fills.csv"))
