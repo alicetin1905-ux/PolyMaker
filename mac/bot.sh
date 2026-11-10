@@ -131,7 +131,7 @@ PLIST_END
 
 dash_loaded() { launchctl print "$DOMAIN/$DLABEL" >/dev/null 2>&1; }
 dash_start() { if [ -f "$DPLIST" ] && ! dash_loaded; then launchctl bootstrap "$DOMAIN" "$DPLIST"; fi; }
-dash_stop() { if dash_loaded; then launchctl bootout "$DOMAIN/$DLABEL" || true; fi; }
+dash_stop() { if dash_loaded; then launchctl bootout "$DOMAIN/$DLABEL" || true; wait_gone "$DLABEL"; fi; }
 
 pages_repo() {  # owner/repo from the origin remote
   git -C "$DIR" remote get-url origin 2>/dev/null | sed -E 's#^(https://|git@)github\.com[:/]##; s#\.git$##; s#/$##'
@@ -184,7 +184,7 @@ dash_restart() {  # (re)write and start the dashboard, unless another program ho
 
 pages_loaded() { launchctl print "$DOMAIN/$PLABEL" >/dev/null 2>&1; }
 pages_start() { if [ -f "$PPLIST" ] && ! pages_loaded; then launchctl bootstrap "$DOMAIN" "$PPLIST"; fi; }
-pages_stop() { if pages_loaded; then launchctl bootout "$DOMAIN/$PLABEL" || true; fi; }
+pages_stop() { if pages_loaded; then launchctl bootout "$DOMAIN/$PLABEL" || true; wait_gone "$PLABEL"; fi; }
 pages_refresh() { if [ -f "$PPLIST" ]; then pages_stop; write_pages_plist; pages_start; fi; }
 
 is_loaded() { launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1; }
@@ -230,8 +230,13 @@ start() {
   echo "Bot gestart. Meekijken: ./mac/bot.sh log"
 }
 
+wait_gone() {  # launchctl bootout returns before the job is really gone: wait up to 15 s
+  local i=0
+  while launchctl print "$DOMAIN/$1" >/dev/null 2>&1 && [ $i -lt 30 ]; do sleep 0.5; i=$((i + 1)); done
+}
+
 stop() {
-  if is_loaded; then launchctl bootout "$DOMAIN/$LABEL" && echo "Bot gestopt."; else echo "Bot draaide niet."; fi
+  if is_loaded; then launchctl bootout "$DOMAIN/$LABEL" || true; wait_gone "$LABEL"; echo "Bot gestopt."; else echo "Bot draaide niet."; fi
 }
 
 case "${1:-}" in
