@@ -1,0 +1,1308 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#07090d">
+<title>PolyMaker</title>
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #07090d;
+  --panel: #0d1117;
+  --panel-2: #121821;
+  --line: #1d2530;
+  --line-2: #273141;
+  --text: #eceef1;
+  --text-2: #a6afbc;
+  --muted: #6f7a8a;
+  --blue: #3987e5;
+  --aqua: #199e70;
+  --orange: #d95926;
+  --violet: #9085e9;
+  --good: #0ca30c;
+  --good-text: #3fcf55;
+  --warn: #fab219;
+  --crit: #d03b3b;
+  --crit-text: #ff7a7a;
+  --radius: 16px;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 var(--sans); }
+body {
+  min-height: 100vh;
+  background:
+    radial-gradient(1200px 600px at 20% -10%, rgba(57,135,229,.10), transparent 60%),
+    radial-gradient(900px 500px at 100% 10%, rgba(144,133,233,.07), transparent 60%),
+    linear-gradient(var(--bg), var(--bg));
+}
+a { color: inherit; }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+.t2 { color: var(--text-2); }
+.pos { color: var(--good-text); }
+.neg { color: var(--crit-text); }
+
+/* ---------- top bar ---------- */
+.top {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: 16px;
+  padding: 12px max(16px, env(safe-area-inset-left)) 12px max(16px, env(safe-area-inset-right));
+  background: rgba(7,9,13,.82); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--line);
+}
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: .2px; text-decoration: none; }
+.brand svg { width: 26px; height: 26px; }
+.badge { font: 600 10px/1 var(--sans); letter-spacing: .8px; padding: 4px 7px; border-radius: 999px; border: 1px solid var(--line-2); color: var(--text-2); text-transform: uppercase; }
+nav.tabs { display: flex; gap: 4px; margin-left: 8px; }
+nav.tabs a { text-decoration: none; color: var(--text-2); padding: 7px 12px; border-radius: 10px; font-weight: 500; }
+nav.tabs a.on { color: var(--text); background: var(--panel-2); }
+nav.tabs a:hover { color: var(--text); }
+.status { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); white-space: nowrap; }
+.led { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+.led.on { background: var(--good); box-shadow: 0 0 6px var(--good), 0 0 14px rgba(12,163,12,.6); animation: breathe 2.4s ease-in-out infinite; }
+.led.off { background: var(--crit); box-shadow: 0 0 8px var(--crit); }
+.led.warn { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
+@keyframes breathe { 50% { opacity: .55; } }
+
+main { max-width: 1280px; margin: 0 auto; padding: 20px 16px 48px; }
+h1 { font-size: 22px; margin: 4px 0 4px; letter-spacing: -.2px; }
+h2 { font-size: 15px; margin: 0 0 12px; letter-spacing: .1px; }
+.sub { color: var(--text-2); margin: 0 0 18px; }
+
+.card { background: linear-gradient(180deg, var(--panel-2), var(--panel)); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; }
+.grid { display: grid; gap: 14px; }
+
+/* ---------- hero ---------- */
+.hero { display: grid; grid-template-columns: minmax(240px, 1.1fr) 3fr; gap: 14px; margin-bottom: 14px; }
+.hero .main { display: flex; flex-direction: column; justify-content: center; }
+.label { font-size: 12px; color: var(--text-2); letter-spacing: .3px; }
+.big { font: 600 40px/1.1 var(--mono); letter-spacing: -1px; margin: 6px 0 4px; }
+.delta { font: 500 14px var(--mono); }
+.kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.kpi { background: rgba(255,255,255,.015); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; min-width: 0; }
+.kpi .v { font: 600 18px var(--mono); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi .h { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+/* ---------- stage: tiles + wires ---------- */
+.stage { position: relative; display: grid; grid-template-columns: minmax(0,1fr) 150px minmax(0,1fr); align-items: stretch; margin-bottom: 14px; }
+.tile { position: relative; cursor: pointer; transition: border-color .25s, box-shadow .25s, transform .15s; }
+.tile:hover { border-color: var(--line-2); }
+.tile:active { transform: scale(.995); }
+.tile:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+.tile.hit { box-shadow: 0 0 0 1px var(--hitc, var(--blue)), 0 0 28px -6px var(--hitc, var(--blue)); }
+.tile-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.tile-head .ttl { font-weight: 650; font-size: 16px; }
+.tile-head .chip { margin-left: auto; }
+.chip { display: inline-flex; align-items: center; gap: 6px; font: 600 11px/1 var(--sans); letter-spacing: .5px; padding: 5px 9px; border-radius: 999px; background: rgba(255,255,255,.04); border: 1px solid var(--line-2); color: var(--text-2); text-transform: uppercase; white-space: nowrap; }
+.tile-sub { color: var(--muted); font-size: 12px; margin-bottom: 14px; }
+.more { position: absolute; right: 16px; bottom: 12px; font-size: 12px; color: var(--muted); }
+.tile:hover .more { color: var(--text-2); }
+
+.radar { width: 30px; height: 30px; border-radius: 50%; position: relative; flex: none;
+  background: radial-gradient(circle, rgba(57,135,229,.18) 0 30%, transparent 31%), radial-gradient(circle, transparent 0 58%, rgba(57,135,229,.25) 59% 61%, transparent 62%);
+  border: 1px solid rgba(57,135,229,.5); overflow: hidden; }
+.radar::after { content: ""; position: absolute; inset: 0; border-radius: 50%;
+  background: conic-gradient(from 0deg, rgba(57,135,229,.65), rgba(57,135,229,0) 70deg, transparent 360deg);
+  animation: spin 2.2s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.mrows { display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; }
+.mrow { display: grid; grid-template-columns: 10px minmax(0,1fr) 64px 58px; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; border: 1px solid transparent; transition: background .5s, border-color .5s; }
+.mrow .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-2); font-size: 13px; }
+.mrow .mid { text-align: right; font: 500 13px var(--mono); }
+.mrow svg { width: 64px; height: 20px; display: block; }
+.mrow.scan { background: rgba(57,135,229,.10); border-color: rgba(57,135,229,.35); transition: none; }
+.mrow.scan .led { background: var(--blue); box-shadow: 0 0 8px var(--blue); }
+.mrow.sig .led { background: var(--text); box-shadow: 0 0 10px var(--blue), 0 0 18px var(--blue); }
+.scanner { border-top: 1px dashed var(--line-2); padding-top: 12px; font-size: 12px; color: var(--text-2); }
+.scanner .row1 { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.bar { height: 4px; border-radius: 4px; background: var(--line); overflow: hidden; }
+.bar > i { display: block; height: 100%; width: 0; background: var(--violet); border-radius: 4px; transition: width .4s; }
+.bar.idle > i { width: 100% !important; background: linear-gradient(90deg, transparent, rgba(144,133,233,.55), transparent); background-size: 40% 100%; background-repeat: no-repeat; animation: shimmer 3.5s linear infinite; }
+@keyframes shimmer { from { background-position: -40% 0; } to { background-position: 140% 0; } }
+
+/* ports */
+.ports { position: absolute; display: flex; gap: 26px; z-index: 3; pointer-events: none; }
+.ports .p { display: flex; align-items: center; gap: 6px; font: 600 9px/1 var(--sans); letter-spacing: .8px; color: var(--muted); }
+.ports .p .led { width: 10px; height: 10px; border: 2px solid var(--bg); box-sizing: content-box; background: #2b3442; transition: background .5s, box-shadow .5s; }
+.ports .p.flash .led { transition: none; background: var(--pc); box-shadow: 0 0 10px var(--pc), 0 0 22px var(--pc); }
+.ports.out { right: -8px; top: 50%; transform: translateY(-50%); flex-direction: column; gap: 58px; }
+.ports.in { left: -8px; top: 50%; transform: translateY(-50%); flex-direction: column; }
+.ports .pl { margin-left: 4px; }
+
+svg.wires { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; overflow: visible; }
+svg.wires .lane { fill: none; stroke: #1c2430; stroke-width: 3; stroke-linecap: round; }
+svg.wires .flow { fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-dasharray: 2 10; opacity: .45; animation: flow 1.1s linear infinite; }
+@keyframes flow { to { stroke-dashoffset: -12; } }
+.buslegend { align-self: end; justify-self: center; margin-bottom: 6px; display: flex; flex-direction: column; gap: 4px; font: 600 9px/1 var(--sans); letter-spacing: .8px; color: var(--muted); text-transform: uppercase; z-index: 1; }
+.buslegend span { display: flex; align-items: center; gap: 6px; }
+.buslegend i { width: 14px; height: 3px; border-radius: 3px; display: inline-block; }
+
+/* bot tile */
+.botbody { display: grid; grid-template-columns: 150px minmax(0,1fr); gap: 16px; align-items: center; margin-bottom: 14px; padding-left: 64px; }
+.core { width: 150px; height: 150px; }
+.core .r1 { fill: none; stroke: rgba(57,135,229,.45); stroke-width: 1.5; stroke-dasharray: 1 7; transform-origin: 80px 80px; animation: spin 18s linear infinite; }
+.core .r2 { fill: none; stroke: rgba(144,133,233,.55); stroke-width: 2; stroke-dasharray: 38 16; transform-origin: 80px 80px; animation: spin 9s linear infinite reverse; }
+.core .trk { fill: none; stroke: var(--line); stroke-width: 6; }
+.core .cnt { fill: none; stroke: var(--blue); stroke-width: 6; stroke-linecap: round; transform: rotate(-90deg); transform-origin: 80px 80px; filter: drop-shadow(0 0 4px rgba(57,135,229,.7)); }
+.core .rip { fill: none; stroke: var(--blue); stroke-width: 2; opacity: 0; transform-origin: 80px 80px; }
+.core .rip.go { animation: ripple 1.1s ease-out; }
+@keyframes ripple { from { opacity: .9; transform: scale(.6); } to { opacity: 0; transform: scale(1.35); } }
+.core .ct { fill: var(--text); font: 600 20px var(--mono); text-anchor: middle; }
+.core .cs { fill: var(--muted); font: 500 10px var(--sans); text-anchor: middle; letter-spacing: .4px; }
+.core .glow { fill: rgba(57,135,229,.08); }
+.core.fill .glow { fill: rgba(25,158,112,.35); transition: fill 0s; }
+.core .glow { transition: fill 1.2s; }
+.slots { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.slot { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 4px 10px; padding: 7px 10px; border-radius: 10px; background: rgba(255,255,255,.02); border: 1px solid var(--line); transition: border-color .6s, background .6s; }
+.slot.flash { border-color: rgba(57,135,229,.6); background: rgba(57,135,229,.08); transition: none; }
+.slot.fillflash { border-color: rgba(25,158,112,.8); background: rgba(25,158,112,.12); transition: none; }
+.slot .nm { font-size: 12px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.slot .q { font: 500 11px var(--mono); color: var(--text-2); white-space: nowrap; }
+.slot .q b { font-weight: 600; color: var(--text); }
+.toast { position: absolute; left: 14px; right: 14px; top: 58px; z-index: 6; pointer-events: none; opacity: 0; transform: translateY(-6px); transition: opacity .35s, transform .35s;
+  background: rgba(13,17,23,.96); border: 1px solid var(--line-2); border-left: 4px solid var(--tc, var(--aqua)); border-radius: 12px; padding: 12px 14px;
+  box-shadow: 0 12px 32px rgba(0,0,0,.5), 0 0 24px -8px var(--tc, var(--aqua)); }
+.toast.show { opacity: 1; transform: none; }
+.toast .t1 { display: flex; align-items: center; gap: 8px; font: 700 11px var(--sans); letter-spacing: 1px; color: var(--tc); text-transform: uppercase; }
+.toast .tdot { width: 8px; height: 8px; border-radius: 50%; background: var(--tc); box-shadow: 0 0 10px var(--tc); }
+.toast .tclose { margin-left: auto; font: 500 11px var(--mono); color: var(--muted); letter-spacing: 0; }
+.toast .t2 { font: 600 17px var(--mono); margin-top: 6px; }
+.toast .t3 { color: var(--text-2); font-size: 13px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.toast .t4, .toast .t5 { font-size: 13px; margin-top: 4px; color: var(--text-2); }
+.toast .t4 b, .toast .t5 b { color: var(--text); }
+.slot .pl2 { grid-column: 1 / -1; display: flex; justify-content: space-between; gap: 8px; font: 11px var(--mono); color: var(--muted); }
+.slot .pl2 b { color: var(--text-2); font-weight: 600; }
+tr.tot td { border-top: 1px solid var(--line-2); font-weight: 600; }
+.posbar { grid-column: 1 / -1; height: 4px; background: var(--line); border-radius: 4px; position: relative; }
+.posbar::before { content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--line-2); }
+.posbar i { position: absolute; top: 0; bottom: 0; border-radius: 4px; }
+.lastact { font-size: 12px; color: var(--muted); border-top: 1px dashed var(--line-2); padding-top: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 80px; }
+
+/* feed */
+.feed ul { list-style: none; margin: 0; padding: 0; max-height: 330px; overflow: auto; }
+.feed li { display: grid; grid-template-columns: 62px 14px minmax(0,1fr); gap: 8px; align-items: baseline; padding: 7px 2px; border-bottom: 1px solid var(--line); font-size: 13px; animation: fadein .5s; }
+.feed li:last-child { border-bottom: 0; }
+.feed li .tm { font: 12px var(--mono); color: var(--muted); }
+.feed li .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; transform: translateY(-1px); }
+.feed li .tx { color: var(--text-2); overflow-wrap: anywhere; }
+.feed li .tx b { color: var(--text); font-weight: 600; }
+@keyframes fadein { from { opacity: 0; transform: translateY(-4px); } }
+.empty { color: var(--muted); padding: 18px 4px; text-align: center; font-size: 13px; }
+
+/* tables */
+.tw { overflow-x: auto; margin: 0 -4px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; font-weight: 500; color: var(--muted); font-size: 12px; padding: 8px 8px; border-bottom: 1px solid var(--line-2); white-space: nowrap; }
+td { padding: 9px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td.r, th.r { text-align: right; }
+td.wrap { white-space: normal; min-width: 220px; }
+tr.click { cursor: pointer; }
+tr.click:hover td { background: rgba(255,255,255,.025); }
+.tag { display: inline-block; font: 600 10px/1 var(--sans); letter-spacing: .5px; padding: 3px 6px; border-radius: 6px; text-transform: uppercase; border: 1px solid var(--line-2); color: var(--text-2); margin-left: 6px; vertical-align: 1px; }
+.tag.act { color: var(--good-text); border-color: rgba(12,163,12,.5); }
+.tag.new { color: var(--violet); border-color: rgba(144,133,233,.6); }
+.st { display: inline-flex; align-items: center; gap: 6px; }
+
+/* charts */
+.chart { position: relative; width: 100%; }
+.chart svg { display: block; width: 100%; overflow: visible; }
+.chart .gl { stroke: var(--line); stroke-width: 1; }
+.chart .ax { fill: var(--muted); font: 11px var(--mono); }
+.chart .zero { stroke: var(--line-2); stroke-width: 1; }
+.chart .xh { stroke: var(--text-2); stroke-width: 1; stroke-dasharray: 3 3; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--text-2); margin-bottom: 8px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 12px; height: 3px; border-radius: 2px; display: inline-block; }
+.legend i.dot { width: 9px; height: 9px; border-radius: 50%; }
+.seg { display: inline-flex; gap: 2px; padding: 3px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+.seg button { font: 500 12px var(--sans); color: var(--text-2); background: none; border: 0; padding: 5px 10px; border-radius: 7px; cursor: pointer; }
+.seg button.on { background: var(--panel-2); color: var(--text); box-shadow: 0 0 0 1px var(--line-2); }
+#tip { position: fixed; z-index: 50; pointer-events: none; background: #1a212c; border: 1px solid var(--line-2); border-radius: 10px; padding: 8px 10px; font-size: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.4); display: none; min-width: 140px; }
+#tip .tt { color: var(--muted); font: 11px var(--mono); margin-bottom: 4px; }
+#tip .tr { display: flex; justify-content: space-between; gap: 14px; align-items: center; }
+#tip .tr span { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); }
+#tip .tr i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+#tip .tr b { font: 600 12px var(--mono); }
+
+/* book */
+.book { display: grid; grid-template-columns: 1fr; gap: 2px; font: 12px var(--mono); }
+.lvl { position: relative; display: grid; grid-template-columns: 70px 1fr 70px; padding: 3px 8px; border-radius: 4px; overflow: hidden; }
+.lvl i { position: absolute; top: 1px; bottom: 1px; right: 0; border-radius: 3px; opacity: .22; }
+.lvl.ask i { background: var(--orange); }
+.lvl.bid i { background: var(--blue); }
+.lvl span { position: relative; }
+.lvl .sz { text-align: right; color: var(--text-2); }
+.lvl.me { box-shadow: inset 0 0 0 1px var(--text-2); }
+.lvl .me-t { position: relative; text-align: center; font: 600 10px var(--sans); letter-spacing: .6px; color: var(--text); }
+.spreadrow { text-align: center; color: var(--muted); font-size: 11px; padding: 6px 0; }
+
+.two { display: grid; grid-template-columns: 1.6fr 1fr; gap: 14px; }
+.three { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.back { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); text-decoration: none; font-size: 13px; margin-bottom: 8px; }
+.back:hover { color: var(--text); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 16px; }
+.kv { display: grid; grid-template-columns: 1fr auto; gap: 8px 16px; font-size: 13px; }
+.kv dt { color: var(--text-2); }
+.kv dd { margin: 0; text-align: right; font-family: var(--mono); }
+.hbar { display: grid; grid-template-columns: minmax(0, 190px) 1fr 52px; gap: 10px; align-items: center; font-size: 12px; margin-bottom: 7px; }
+.hbar .n { color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hbar .b { height: 10px; background: var(--line); border-radius: 0 4px 4px 0; position: relative; }
+.hbar .b i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--blue); border-radius: 0 4px 4px 0; }
+.hbar .v { text-align: right; font-family: var(--mono); color: var(--text-2); }
+.filters { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.note { font-size: 12px; color: var(--muted); margin-top: 10px; }
+.offline-banner { display: none; margin-bottom: 14px; padding: 12px 14px; border-radius: 12px; border: 1px solid rgba(208,59,59,.5); background: rgba(208,59,59,.08); color: var(--text); font-size: 13px; }
+.offline-banner.show { display: flex; gap: 10px; align-items: center; }
+.offline-banner.info { border-color: rgba(57,135,229,.45); background: rgba(57,135,229,.07); }
+.offline-banner.info .led { background: var(--blue); box-shadow: 0 0 8px var(--blue); }
+
+@media (max-width: 1020px) {
+  .hero { grid-template-columns: 1fr; }
+  .kpis { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .stage { grid-template-columns: minmax(0,1fr); grid-template-rows: auto 110px auto; }
+  .ports.out { right: auto; top: auto; bottom: -8px; left: 50%; transform: translateX(-50%); flex-direction: row; gap: 72px; }
+  .ports.in { left: 50%; top: -8px; transform: translateX(-50%); flex-direction: row; gap: 40px; }
+  .ports .pl { display: none; }
+  .botbody { padding-left: 0; padding-top: 14px; }
+  .buslegend { align-self: center; justify-self: end; margin: 0 4px 0 0; }
+  .two, .three { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  .top { flex-wrap: wrap; gap: 10px; }
+  nav.tabs { order: 3; width: 100%; margin: 0; }
+  nav.tabs a { flex: 1; text-align: center; }
+  .big { font-size: 30px; margin: 4px 0 2px; }
+  .hero .main { padding: 14px 16px; }
+  .kpis { gap: 8px; }
+  .kpi { padding: 9px 11px; border-radius: 10px; }
+  .kpi .v { font-size: 15px; margin-top: 2px; }
+  .kpi .h { display: none; }
+  .label { font-size: 11px; }
+  .botbody { grid-template-columns: 1fr; justify-items: center; }
+  .slots { width: 100%; }
+  .core { width: 130px; height: 130px; }
+  .mrow { grid-template-columns: 10px minmax(0,1fr) 54px 52px; gap: 8px; }
+  .mrow svg { width: 54px; }
+  .hbar { grid-template-columns: minmax(0, 120px) 1fr 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .radar::after, .core .r1, .core .r2, svg.wires .flow, .bar.idle > i, .led.on { animation: none !important; }
+}
+</style>
+<script>window.POLYMAKER_STATIC = true;</script>
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="#/">
+    <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="2" y="2" width="28" height="28" rx="8" fill="#121821" stroke="#273141"/><path d="M9 21V11h6.5a3.5 3.5 0 0 1 0 7H9" fill="none" stroke="#3987e5" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="22.5" cy="21" r="2.4" fill="#199e70"/></svg>
+    PolyMaker <span class="badge">paper</span>
+  </a>
+  <nav class="tabs">
+    <a href="#/" data-r="">Overzicht</a>
+    <a href="#/polymarket" data-r="polymarket">Polymarket</a>
+    <a href="#/bot" data-r="bot">Bot</a>
+  </nav>
+  <div class="status"><span class="led" id="sLed"></span><span id="sTxt">verbinden…</span></div>
+</header>
+<main id="app"></main>
+<div id="tip"></div>
+
+<script>
+"use strict";
+// ======================================================================
+// helpers
+// ======================================================================
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const NF2 = new Intl.NumberFormat("nl-NL", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const NF0 = new Intl.NumberFormat("nl-NL", { maximumFractionDigits: 0 });
+const NF1 = new Intl.NumberFormat("nl-NL", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const usd = (v, signed = false) => v == null || isNaN(v) ? "–" : (signed ? (v > 0.0049 ? "+" : v < -0.0049 ? "−" : "") : (v < 0 ? "−" : "")) + "$" + NF2.format(Math.abs(v));
+const usd3 = v => v == null ? "–" : "$" + new Intl.NumberFormat("nl-NL", { minimumFractionDigits: 3, maximumFractionDigits: 3 }).format(v);
+const cents = p => p == null || isNaN(p) ? "–" : NF1.format(p * 100) + "¢";
+const pct = v => v == null ? "–" : NF1.format(v * 100) + "%";
+const n0 = v => v == null ? "–" : NF0.format(v);
+const cls = v => v > 0.0049 ? "pos" : v < -0.0049 ? "neg" : "";
+const hhmmss = t => new Date(t * 1000).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+const hhmm = t => new Date(t * 1000).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" });
+const ddmm = t => new Date(t * 1000).toLocaleDateString("nl-NL", { day: "numeric", month: "short" });
+function dur(sec) {
+  sec = Math.max(0, Math.round(sec));
+  const d = Math.floor(sec / 86400), h = Math.floor(sec % 86400 / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
+  if (d) return `${d}d ${h}u`;
+  if (h) return `${h}u ${m}m`;
+  if (m) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+const shortQ = q => String(q || "").replace(/^Will (the )?/i, "").replace(/\?$/, "");
+const COLORS = { data: "#5b7fb0", signal: "#3987e5", fillBuy: "#199e70", fillSell: "#d95926", cand: "#9085e9", warn: "#fab219", crit: "#d03b3b", rewards: "#199e70", trading: "#d95926", total: "#3987e5" };
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+const STATIC = !!window.POLYMAKER_STATIC;
+const CLOB = "https://clob.polymarket.com";
+async function getJSON(url) {
+  const r = await fetch(url + (url.includes("?") ? "&" : "?") + "_=" + Date.now(), { cache: "no-store" });
+  if (!r.ok) throw new Error(r.status);
+  return r.json();
+}
+// ---- online (GitHub Pages) mode: bot data from published JSON, prices live from Polymarket ----
+const LIVE = { q: {}, spark: {} };   // live quotes per slug from the browser's own polling
+const PUB = { raw: null, at: 0, idx: null, idxAt: 0 };
+async function clobBook(token) {
+  const b = await (await fetch(`${CLOB}/book?token_id=${encodeURIComponent(token)}`, { cache: "no-store" })).json();
+  const bids = (b.bids || []).map(x => [+x.price, +x.size]).sort((a, c) => c[0] - a[0]).slice(0, 25);
+  const asks = (b.asks || []).map(x => [+x.price, +x.size]).sort((a, c) => a[0] - c[0]).slice(0, 25);
+  const mid = bids.length && asks.length ? (bids[0][0] + asks[0][0]) / 2 : null;
+  return { bids, asks, mid, tick: +(b.tick_size || 0.01), time: Date.now() / 1000 };
+}
+function overlayLive(m) {
+  const q = LIVE.q[m.slug]; if (!q || q.mid == null) return;
+  m.mid = q.mid; m.best_bid = q.bb; m.best_ask = q.ba;
+}
+async function staticSnapshot() {
+  if (!PUB.raw || Date.now() - PUB.at > 60000) {
+    PUB.raw = JSON.stringify(await getJSON("data/snapshot.json")); PUB.at = Date.now();
+  }
+  const snap = JSON.parse(PUB.raw);
+  snap.server_time = Date.now() / 1000;
+  for (const m of (snap.live?.markets || [])) {
+    overlayLive(m);
+    const base = snap.sparks?.[m.slug] || [], last = base.length ? base[base.length - 1][0] : 0;
+    (snap.sparks = snap.sparks || {})[m.slug] = base.concat((LIVE.spark[m.slug] || []).filter(p => p[0] > last));
+  }
+  return snap;
+}
+async function marketIndex() {
+  if (!PUB.idx || Date.now() - PUB.idxAt > 60000) { PUB.idx = await getJSON("data/markets/index.json"); PUB.idxAt = Date.now(); }
+  return PUB.idx;
+}
+async function api(path) {
+  if (!STATIC) return getJSON(path);
+  const u = new URL(path, "http://x"), q = u.searchParams;
+  switch (u.pathname) {
+    case "/api/snapshot": return staticSnapshot();
+    case "/api/equity": return getJSON(`data/equity_${q.get("range") || "24u"}.json`);
+    case "/api/scan": return getJSON("data/scan.json");
+    case "/api/fills": {
+      const r = await getJSON("data/fills.json"), slug = q.get("slug");
+      return slug ? { fills: r.fills.filter(f => f.market === slug) } : r;
+    }
+    case "/api/market": {
+      const f = (await marketIndex())[q.get("slug")];
+      if (!f) return { live: null, candidate: null, history: [], fills: [], settings: null };
+      const d = await getJSON("data/markets/" + encodeURIComponent(f));
+      if (d.live) overlayLive(d.live);
+      return d;
+    }
+    case "/api/book": return clobBook(q.get("token"));
+    case "/api/history": {
+      const r = await (await fetch(`${CLOB}/prices-history?market=${encodeURIComponent(q.get("token"))}&interval=1w&fidelity=60`)).json();
+      return { points: (r.history || []).map(h => [h.t, +h.p]) };
+    }
+  }
+  throw new Error("onbekend pad " + path);
+}
+// browser-side market scan: every 15s read each bot market's book straight from Polymarket
+let livePolling = false;
+async function livePoll() {
+  if (livePolling || document.hidden) return; livePolling = true;
+  try {
+    for (const m of (S.live?.markets || [])) {
+      if (!m.yes_token) continue;
+      try {
+        const b = await clobBook(m.yes_token);
+        if (b.mid == null) continue;
+        const prev = LIVE.q[m.slug]?.mid, now = Date.now() / 1000;
+        LIVE.q[m.slug] = { mid: b.mid, bb: b.bids[0]?.[0], ba: b.asks[0]?.[0] };
+        const sp = LIVE.spark[m.slug] = LIVE.spark[m.slug] || [];
+        sp.push([Math.round(now), b.mid]); if (sp.length > 240) sp.shift();
+        enqueue({ type: "scan", m: m.slug, mid: b.mid, moved: prev != null && Math.abs(prev - b.mid) > 1e-9, ts: now });
+      } catch (e) { /* one market failing is fine */ }
+    }
+    await refreshSnap();
+  } finally { livePolling = false; }
+}
+// replay new bot events from the latest publication
+async function staticEvents() {
+  let r; try { r = await getJSON("data/events.json"); } catch { return; }
+  const first = !S.eventsInit; S.eventsInit = true;
+  S.seen = S.seen || new Set();
+  for (const ev of r.events) {
+    const key = `${ev.ts}|${ev.type}|${ev.m || ""}|${ev.side || ""}|${ev.price ?? ""}`;
+    if (ev.ts < (S.lastTs || 0) || S.seen.has(key)) continue;
+    S.seen.add(key); S.lastTs = ev.ts;
+    if (first) handleEvent(ev, true); else enqueue(ev);
+  }
+}
+
+// ======================================================================
+// state
+// ======================================================================
+const S = {
+  snap: null, live: null, offset: 0, lastSeq: 0, feed: [], qNames: {},
+  online: false, view: null, eventsInit: false,
+};
+function serverNow() { return Date.now() / 1000 + S.offset; }
+function nameOf(slug) { return S.qNames[slug] ? shortQ(S.qNames[slug]) : slug; }
+
+// ======================================================================
+// tooltip
+// ======================================================================
+const tip = $("#tip");
+function showTip(html, x, y) {
+  tip.innerHTML = html; tip.style.display = "block";
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  let left = x + 14, top = y + 14;
+  if (left + w > innerWidth - 8) left = x - w - 14;
+  if (top + h > innerHeight - 8) top = y - h - 14;
+  tip.style.left = Math.max(8, left) + "px"; tip.style.top = Math.max(8, top) + "px";
+}
+function hideTip() { tip.style.display = "none"; }
+
+// ======================================================================
+// sparkline + line chart
+// ======================================================================
+function sparkSVG(pts, w = 64, h = 20) {
+  if (!pts || pts.length < 2) return `<svg viewBox="0 0 ${w} ${h}"><line x1="0" x2="${w}" y1="${h / 2}" y2="${h / 2}" stroke="#273141" stroke-width="1.5"/></svg>`;
+  let lo = Infinity, hi = -Infinity;
+  for (const [, v] of pts) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+  if (hi - lo < 0.004) { const m = (hi + lo) / 2; lo = m - 0.002; hi = m + 0.002; }
+  const t0 = pts[0][0], t1 = pts[pts.length - 1][0] || t0 + 1;
+  const d = pts.map(([t, v], i) => `${i ? "L" : "M"}${((t - t0) / (t1 - t0 || 1) * (w - 3) + 1).toFixed(1)},${(h - 2 - (v - lo) / (hi - lo) * (h - 4)).toFixed(1)}`).join("");
+  const last = pts[pts.length - 1][1], first = pts[0][1];
+  const col = last > first + 1e-9 ? "#3fcf55" : last < first - 1e-9 ? "#ff7a7a" : "#3987e5";
+  return `<svg viewBox="0 0 ${w} ${h}" aria-hidden="true"><path d="${d}" fill="none" stroke="${col}" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
+}
+
+function niceTicks(lo, hi, n = 4) {
+  if (lo === hi) { lo -= 1; hi += 1; }
+  const span = hi - lo, step0 = span / n, mag = Math.pow(10, Math.floor(Math.log10(step0)));
+  const err = step0 / mag, step = (err >= 7.5 ? 10 : err >= 3.5 ? 5 : err >= 1.5 ? 2 : 1) * mag;
+  const a = Math.floor(lo / step) * step, b = Math.ceil(hi / step) * step, out = [];
+  for (let v = a; v <= b + step / 2; v += step) out.push(+v.toFixed(10));
+  return out;
+}
+
+function lineChart(el, opt) {
+  // opt: { series:[{name,color,pts:[[t,v]]}], markers:[{t,v,color,label,shape}], yfmt, height, zero, empty }
+  const H = opt.height || 260, pad = { l: 58, r: 74, t: 10, b: 26 };
+  const W = Math.max(280, el.clientWidth || 600);
+  const series = opt.series.filter(s => s.pts && s.pts.length);
+  const legend = opt.series.length >= 2 || (opt.markers && opt.markers.length)
+    ? `<div class="legend">${opt.series.map(s => `<span><i style="background:${s.color}"></i>${esc(s.name)}</span>`).join("")}${(opt.markerLegend || []).map(m => `<span><i class="dot" style="background:${m.color}"></i>${esc(m.name)}</span>`).join("")}</div>` : "";
+  if (!series.length || series.every(s => s.pts.length < 2)) {
+    el.innerHTML = legend + `<div class="empty" style="height:${H}px;display:grid;place-items:center">${esc(opt.empty || "Nog niet genoeg data")}</div>`;
+    return;
+  }
+  let t0 = Infinity, t1 = -Infinity, lo = Infinity, hi = -Infinity;
+  for (const s of series) for (const [t, v] of s.pts) { t0 = Math.min(t0, t); t1 = Math.max(t1, t); lo = Math.min(lo, v); hi = Math.max(hi, v); }
+  for (const m of opt.markers || []) { if (m.t >= t0 && m.t <= t1) { lo = Math.min(lo, m.v); hi = Math.max(hi, m.v); } }
+  if (opt.zero) { lo = Math.min(lo, 0); hi = Math.max(hi, 0); }
+  if (hi - lo < (opt.minSpan || 0.02)) { const m = (hi + lo) / 2, h2 = (opt.minSpan || 0.02) / 2; lo = m - h2; hi = m + h2; }
+  const yt = niceTicks(lo, hi, 4); lo = Math.min(lo, yt[0]); hi = Math.max(hi, yt[yt.length - 1]);
+  if (t1 === t0) t1 = t0 + 60;
+  const X = t => pad.l + (t - t0) / (t1 - t0) * (W - pad.l - pad.r);
+  const Y = v => pad.t + (1 - (v - lo) / (hi - lo)) * (H - pad.t - pad.b);
+  const yfmt = opt.yfmt || (v => v);
+  const span = t1 - t0, xfmt = span > 2 * 86400 ? ddmm : span < 900 ? hhmmss : hhmm;
+  const nx = Math.max(2, Math.min(6, Math.floor((W - pad.l - pad.r) / 90)));
+  let g = "";
+  for (const v of yt) g += `<line class="gl" x1="${pad.l}" x2="${W - pad.r}" y1="${Y(v)}" y2="${Y(v)}"/><text class="ax" x="${pad.l - 8}" y="${Y(v) + 4}" text-anchor="end">${esc(yfmt(v))}</text>`;
+  if (opt.zero && lo < 0 && hi > 0) g += `<line class="zero" x1="${pad.l}" x2="${W - pad.r}" y1="${Y(0)}" y2="${Y(0)}"/>`;
+  for (let i = 0; i <= nx; i++) { const t = t0 + span * i / nx; g += `<text class="ax" x="${X(t)}" y="${H - 6}" text-anchor="${i === 0 ? "start" : i === nx ? "end" : "middle"}">${esc(xfmt(t))}</text>`; }
+  let paths = "", labels = [];
+  for (const s of series) {
+    const d = s.pts.map(([t, v], i) => `${i ? "L" : "M"}${X(t).toFixed(1)},${Y(v).toFixed(1)}`).join("");
+    paths += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+    const [lt, lv] = s.pts[s.pts.length - 1];
+    paths += `<circle cx="${X(lt)}" cy="${Y(lv)}" r="4" fill="${s.color}" stroke="var(--panel)" stroke-width="2"/>`;
+    if (opt.series.length <= 4) labels.push({ y: Y(lv), text: yfmt(lv), color: s.color });
+  }
+  // de-collide direct labels
+  labels.sort((a, b) => a.y - b.y);
+  for (let i = 1; i < labels.length; i++) if (labels[i].y - labels[i - 1].y < 14) labels[i].y = labels[i - 1].y + 14;
+  const lab = labels.map(l => `<text x="${W - pad.r + 8}" y="${l.y + 4}" fill="var(--text-2)" font-size="11" font-family="var(--mono)">${esc(l.text)}</text>`).join("");
+  let marks = "";
+  for (const m of opt.markers || []) {
+    if (m.t < t0 || m.t > t1) continue;
+    const x = X(m.t), y = Y(m.v);
+    marks += m.shape === "down"
+      ? `<path d="M${x - 5},${y - 4}L${x + 5},${y - 4}L${x},${y + 5}Z" fill="${m.color}" stroke="var(--panel)" stroke-width="2"/>`
+      : `<path d="M${x - 5},${y + 4}L${x + 5},${y + 4}L${x},${y - 5}Z" fill="${m.color}" stroke="var(--panel)" stroke-width="2"/>`;
+  }
+  el.innerHTML = legend + `<svg viewBox="0 0 ${W} ${H}" height="${H}" role="img" aria-label="${esc(opt.aria || "grafiek")}">${g}${paths}${marks}${lab}<g class="hov"></g><rect x="${pad.l}" y="0" width="${W - pad.l - pad.r}" height="${H}" fill="transparent" style="cursor:crosshair"/></svg>`;
+  const svg = $("svg", el), hov = $(".hov", svg), rect = $("rect:last-of-type", svg);
+  function nearest(pts, t) { let lo2 = 0, hi2 = pts.length - 1; while (hi2 - lo2 > 1) { const m = (lo2 + hi2) >> 1; if (pts[m][0] < t) lo2 = m; else hi2 = m; } return Math.abs(pts[lo2][0] - t) < Math.abs(pts[hi2][0] - t) ? pts[lo2] : pts[hi2]; }
+  function move(ev) {
+    const r = svg.getBoundingClientRect(), sx = (ev.clientX - r.left) * W / r.width;
+    const t = t0 + (sx - pad.l) / (W - pad.l - pad.r) * span;
+    let html = "", dots = "", tt = null;
+    for (const s of series) { const p = nearest(s.pts, t); tt = tt ?? p[0]; dots += `<circle cx="${X(p[0])}" cy="${Y(p[1])}" r="5" fill="${s.color}" stroke="var(--panel)" stroke-width="2"/>`; html += `<div class="tr"><span><i style="background:${s.color}"></i>${esc(s.name)}</span><b>${esc(yfmt(p[1]))}</b></div>`; }
+    const near = (opt.markers || []).filter(m => Math.abs(X(m.t) - sx) < 8);
+    for (const m of near) html += `<div class="tr"><span><i style="background:${m.color}"></i>${esc(m.label)}</span><b></b></div>`;
+    hov.innerHTML = `<line class="xh" x1="${X(tt)}" x2="${X(tt)}" y1="${pad.t}" y2="${H - pad.b}"/>` + dots;
+    showTip(`<div class="tt">${esc(span > 2 * 86400 ? ddmm(tt) + " " + hhmm(tt) : hhmmss(tt))}</div>` + html, ev.clientX, ev.clientY);
+  }
+  rect.addEventListener("pointermove", move);
+  rect.addEventListener("pointerdown", move);
+  rect.addEventListener("pointerleave", () => { hov.innerHTML = ""; hideTip(); });
+}
+
+// ======================================================================
+// wires + pulses (home view)
+// ======================================================================
+const LANES = ["data", "signal", "cand"];
+const LANE_COLOR = { data: COLORS.data, signal: COLORS.signal, cand: COLORS.cand };
+const W = { svg: null, stage: null, paths: {}, pulses: [], raf: null, horiz: true };
+
+function layoutWires() {
+  const stage = $(".stage"); if (!stage) return;
+  const svg = $("svg.wires", stage); const sr = stage.getBoundingClientRect();
+  svg.setAttribute("viewBox", `0 0 ${sr.width} ${sr.height}`);
+  let html = "";
+  for (const lane of LANES) {
+    const a = $(`.ports.out .p[data-l="${lane}"] .led`, stage).getBoundingClientRect();
+    const b = $(`.ports.in .p[data-l="${lane}"] .led`, stage).getBoundingClientRect();
+    const x0 = a.left + a.width / 2 - sr.left, y0 = a.top + a.height / 2 - sr.top;
+    const x1 = b.left + b.width / 2 - sr.left, y1 = b.top + b.height / 2 - sr.top;
+    const horiz = Math.abs(x1 - x0) > Math.abs(y1 - y0); W.horiz = horiz;
+    const d = horiz
+      ? `M${x0},${y0} C${x0 + (x1 - x0) * .55},${y0} ${x1 - (x1 - x0) * .55},${y1} ${x1},${y1}`
+      : `M${x0},${y0} C${x0},${y0 + (y1 - y0) * .55} ${x1},${y1 - (y1 - y0) * .55} ${x1},${y1}`;
+    html += `<path class="lane" id="lane-${lane}" d="${d}"/><path class="flow" d="${d}" stroke="${LANE_COLOR[lane]}"/>`;
+  }
+  html += `<g id="pulses"></g>`;
+  svg.innerHTML = html;
+  W.svg = svg; W.stage = stage;
+  W.paths = Object.fromEntries(LANES.map(l => { const p = $(`#lane-${l}`, svg); return [l, { el: p, len: p.getTotalLength() }]; }));
+  W.pulses.forEach(p => p.g && p.g.remove()); W.pulses = [];
+}
+
+function flashPort(sel, color) {
+  const p = $(sel); if (!p) return;
+  p.style.setProperty("--pc", color); p.classList.remove("flash"); void p.offsetWidth; p.classList.add("flash");
+  clearTimeout(p._t); p._t = setTimeout(() => p.classList.remove("flash"), 260);
+}
+function hitTile(sel, color) {
+  const t = $(sel); if (!t) return;
+  t.style.setProperty("--hitc", color); t.classList.add("hit");
+  clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove("hit"), 420);
+}
+
+function pulse(lane, color, opts = {}) {
+  if (!W.svg || !W.paths[lane] || document.hidden) { opts.onArrive && opts.onArrive(); return; }
+  const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+  const size = opts.size || 4, trail = reduceMotion ? 0 : (opts.trail ?? 6);
+  let inner = `<circle r="${size * 3}" fill="${color}" opacity=".18"/>`;
+  for (let i = trail; i >= 1; i--) inner += `<circle r="${Math.max(1, size * (1 - i / (trail + 2)))}" fill="${color}" opacity="${(.55 * (1 - i / (trail + 1))).toFixed(2)}"/>`;
+  inner += `<circle r="${size}" fill="#fff"/><circle r="${size * .65}" fill="${color}"/>`;
+  g.innerHTML = inner; $("#pulses", W.svg).appendChild(g);
+  flashPort(`.ports.out .p[data-l="${lane}"]`, color);
+  W.pulses.push({ g, lane, color, t0: performance.now(), dur: opts.dur || (reduceMotion ? 500 : 1150), trail, onArrive: opts.onArrive });
+  if (!W.raf) W.raf = requestAnimationFrame(stepPulses);
+}
+function stepPulses(now) {
+  W.raf = null;
+  W.pulses = W.pulses.filter(p => {
+    const path = W.paths[p.lane]; if (!path || !p.g.isConnected) return false;
+    const k = Math.min(1, (now - p.t0) / p.dur);
+    const e = k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+    const cs = p.g.children, n = cs.length;
+    for (let i = 0; i < n; i++) {
+      const lag = i === 0 || i >= n - 2 ? 0 : (p.trail - (i - 1)) * 0.035;
+      const pos = path.el.getPointAtLength(Math.max(0, e - lag) * path.len);
+      cs[i].setAttribute("cx", pos.x); cs[i].setAttribute("cy", pos.y);
+    }
+    if (k >= 1) {
+      p.g.remove();
+      flashPort(`.ports.in .p[data-l="${p.lane}"]`, p.color);
+      hitTile(".tile.bot", p.color);
+      p.onArrive && p.onArrive();
+      return false;
+    }
+    return true;
+  });
+  if (W.pulses.length) W.raf = requestAnimationFrame(stepPulses);
+}
+
+// ---- plain-language fill description ------------------------------------------------
+// a short YES position is shown as NEE shares at the NEE price (1 - YES price)
+const posLabel = (net, avg) => Math.abs(net) < 0.01 ? "vlak" : `${n0(Math.abs(net))} ${net > 0 ? "JA" : "NEE"} @ ${cents(net > 0 ? avg : 1 - avg)}`;
+function posText(net, avg) {
+  if (net == null) return "";
+  return Math.abs(net) < 0.01 ? "positie nu <b>vlak</b>" : `positie nu <b>${posLabel(net, avg)}</b>`;
+}
+function fillInfo(f) {
+  // f: {side, price, size, realized?, pos?, avg?}
+  const buy = f.side === "bid";
+  const verb = buy ? "Gekocht" : "Verkocht";
+  const head = `${verb} ${n0(f.size)} JA @ ${cents(f.price)}`;
+  let what = "", res = "";
+  if (f.realized != null && Math.abs(f.realized) > 0.004) {
+    what = buy ? "sluit eerdere verkoop" : "sluit eerdere aankoop";
+    res = `<span class="${cls(f.realized)}">${f.realized > 0 ? "winst" : "verlies"} ${usd(f.realized, true)}</span>`;
+  } else if (f.pos != null) {
+    const before = f.pos - (buy ? f.size : -f.size);
+    what = Math.abs(before) < 0.01 ? "opent positie" : (Math.sign(before) === Math.sign(f.pos) ? "vergroot positie" : "draait positie om");
+  }
+  return { buy, head, what, res, pos: f.pos != null ? posText(f.pos, f.avg) : "" };
+}
+function fillCells(f) {
+  const r = f.realized;
+  const res = r == null ? `<td class="r muted">–</td>` : Math.abs(r) > 0.004 ? `<td class="r num ${cls(r)}">${usd(r, true)}</td>` : `<td class="r muted">opent</td>`;
+  const pos = f.pos == null ? "–" : posLabel(f.pos, f.avg);
+  return res + `<td class="r num">${pos}</td>`;
+}
+function fillHTML(f, market) {
+  const i = fillInfo(f);
+  return `<b>${i.head}</b>${market ? ` · ${esc(nameOf(market))}` : ""}${i.what ? ` · ${i.what}` : ""}${i.res ? ` → ${i.res}` : ""}${i.pos ? ` · ${i.pos}` : ""}`;
+}
+
+// ---- fill toast on the BOT tile ---------------------------------------------------------
+const toastQ = []; let toastBusy = false;
+function showFillToast(ev) { toastQ.push(ev); if (!toastBusy) nextToast(); }
+function nextToast() {
+  const box = $("#toast"); const ev = toastQ.shift();
+  if (!ev || !box) { toastBusy = false; if (box) box.classList.remove("show"); return; }
+  toastBusy = true;
+  const i = fillInfo(ev), c = i.buy ? COLORS.fillBuy : COLORS.fillSell;
+  box.style.setProperty("--tc", c);
+  box.innerHTML = `<div class="t1"><span class="tdot"></span>FILL · ${i.buy ? "koop" : "verkoop"}<span class="tclose">${hhmmss(ev.ts)}</span></div>
+    <div class="t2">${esc(i.head)}</div>
+    <div class="t3">${esc(nameOf(ev.m))}</div>
+    ${i.what || i.res ? `<div class="t4">${i.what}${i.res ? ` → ${i.res}` : ""}</div>` : ""}
+    ${i.pos ? `<div class="t5">${i.pos}</div>` : ""}`;
+  box.classList.remove("show"); void box.offsetWidth; box.classList.add("show");
+  setTimeout(nextToast, toastQ.length ? 4500 : 10000);
+}
+
+// ======================================================================
+// event stream → animations + feed
+// ======================================================================
+const queue = []; let qTimer = null;
+function enqueue(ev) { queue.push(ev); if (!qTimer) drain(); }
+function drain() {
+  const ev = queue.shift();
+  if (!ev) { qTimer = null; return; }
+  handleEvent(ev);
+  const gap = queue.length > 40 ? 25 : ev.type === "scan" ? 170 : 120;
+  qTimer = setTimeout(drain, gap);
+}
+
+function feedPush(ev, color, html) {
+  S.feed.unshift({ ts: ev.ts, color, html, type: ev.type, seq: ev.seq });
+  if (S.feed.length > 200) S.feed.length = 200;
+  if (S.view && S.view.onFeed) S.view.onFeed();
+}
+
+function handleEvent(ev, quiet = false) {
+  const home = S.view && S.view.name === "home" && !quiet;
+  const m = ev.m;
+  switch (ev.type) {
+    case "scan": {
+      if (home) {
+        const row = $(`.mrow[data-slug="${CSS.escape(m)}"]`);
+        if (row) { row.classList.add("scan"); setTimeout(() => row.classList.remove("scan"), 420); }
+        pulse("data", COLORS.data, { size: 2.6, trail: 3, dur: 1000 });
+        if (ev.moved) setTimeout(() => {
+          const r = $(`.mrow[data-slug="${CSS.escape(m)}"]`);
+          if (r) { r.classList.add("sig"); setTimeout(() => r.classList.remove("sig"), 600); }
+          pulse("signal", COLORS.signal, { size: 3.6 });
+        }, 120);
+      }
+      break;
+    }
+    case "trades":
+      if (home) pulse("signal", COLORS.signal, { size: 4.2 });
+      feedPush(ev, COLORS.signal, `Handel gezien in <b>${esc(nameOf(m))}</b> <span class="muted">(${ev.n}×)</span>`);
+      break;
+    case "fill": {
+      const buy = ev.side === "bid", c = buy ? COLORS.fillBuy : COLORS.fillSell;
+      if (home) pulse("signal", c, { size: 6, trail: 8, dur: 1300, onArrive: () => {
+        showFillToast(ev);
+        const core = $(".core"); if (core) { core.classList.add("fill"); setTimeout(() => core.classList.remove("fill"), 160); }
+        const s = $(`.slot[data-slug="${CSS.escape(m)}"]`); if (s) { s.classList.add("fillflash"); setTimeout(() => s.classList.remove("fillflash"), 900); }
+      } });
+      feedPush(ev, c, `FILL · ${fillHTML(ev, m)}`);
+      break;
+    }
+    case "pause":
+      if (home) pulse("signal", COLORS.warn, { size: 5 });
+      feedPush(ev, COLORS.warn, `⚠ <b>Noodstop</b> ${esc(nameOf(m))}: koers sprong ${cents(ev.frm)} → ${cents(ev.to)}, orders ${Math.round(ev.secs / 60)} min uit`);
+      break;
+    case "requote":
+      if (home) { const s = $(`.slot[data-slug="${CSS.escape(m)}"]`); if (s) { s.classList.add("flash"); setTimeout(() => s.classList.remove("flash"), 500); } }
+      if (S.view && S.view.name === "home") $("#lastact") && ($("#lastact").textContent = `Laatste actie ${hhmmss(ev.ts)}: ${ev.side === "bid" ? "bod" : "laat"} ${ev.price == null ? "ingetrokken" : "→ " + cents(ev.price)} · ${nameOf(m)}`);
+      break;
+    case "tick":
+      if (home) { const r = $(".core .rip"); if (r) { r.classList.remove("go"); void r.getBBox(); r.classList.add("go"); } }
+      refreshSnap();
+      break;
+    case "candidate":
+      if (home && !quiet) pulse("cand", COLORS.cand, { size: 4.5, dur: 1400 });
+      feedPush(ev, COLORS.cand, `${ev.new ? "<b>Nieuwe kans</b>" : "Kans"}: ${esc(shortQ(ev.q))} <span class="muted">(~${usd(ev.reward_day)}/dag)</span>`);
+      break;
+    case "scan_start":
+      updateScanner({ status: "scant", phase: "markten", done: 0, total: 0 });
+      break;
+    case "scan_progress":
+      updateScanner({ status: "scant", phase: ev.phase, done: ev.done, total: ev.total });
+      if (home && ev.phase !== "markten") pulse("cand", "rgba(144,133,233,.6)", { size: 2.2, trail: 2, dur: 1100 });
+      break;
+    case "scan_done":
+      feedPush(ev, COLORS.cand, `Marktscan klaar: <b>${n0(ev.total)}</b> markten bekeken, <b>${ev.passed}</b> kansen door de filters`);
+      refreshSnap();
+      break;
+    case "error":
+      feedPush(ev, COLORS.crit, `<b>Fout</b> ${esc(ev.msg)}`);
+      break;
+    case "block":
+      if (home) pulse("signal", COLORS.crit, { size: 5.5, trail: 8 });
+      feedPush(ev, COLORS.crit, `⛔ <b>Markt geblokkeerd</b> (${esc(ev.reason)}): ${esc(nameOf(m))} · ${esc(ev.detail || "")} · tot ${ddmm(ev.until)} ${hhmm(ev.until)} alleen nog uitstappen`);
+      refreshSnap();
+      break;
+    case "unblock":
+      feedPush(ev, COLORS.signal, `Blokkade opgeheven: <b>${esc(nameOf(m))}</b> doet weer mee`);
+      break;
+    case "rotate_start":
+      feedPush(ev, COLORS.cand, `Markten verversen: de bot zoekt betere markten…`);
+      break;
+    case "rotate": {
+      for (const [k, q] of Object.entries(ev.questions || {})) S.qNames[k] = S.qNames[k] || q;
+      if (home && (ev.into || []).length) pulse("cand", COLORS.cand, { size: 5, dur: 1400 });
+      const outs = (ev.out || []).map(x => esc(nameOf(x))), ins = (ev.into || []).map(x => esc(nameOf(x)));
+      feedPush(ev, COLORS.cand, outs.length || ins.length
+        ? `<b>Markten ververst</b>${outs.length ? ` · eruit: ${outs.join(", ")}` : ""}${ins.length ? ` · erin: ${ins.join(", ")}` : ""}`
+        : `Markten ververst: de huidige markten zijn nog steeds de beste`);
+      refreshSnap();
+      break;
+    }
+  }
+}
+
+async function pollEvents() {
+  try {
+    const r = await api(`/api/events?after=${S.lastSeq}`);
+    if (r.reset) { S.lastSeq = 0; return; }
+    const first = !S.eventsInit; S.eventsInit = true;
+    for (const ev of r.events) {
+      S.lastSeq = Math.max(S.lastSeq, ev.seq);
+      if (first) { if (["fill", "trades", "pause", "candidate", "scan_done", "error"].includes(ev.type)) handleEvent(ev, true); }
+      else enqueue(ev);
+    }
+    S.lastSeq = Math.max(S.lastSeq, r.last);
+  } catch (e) { /* server down; status handles it */ }
+}
+
+// ======================================================================
+// snapshot + status
+// ======================================================================
+let snapBusy = false;
+async function refreshSnap() {
+  if (snapBusy) return; snapBusy = true;
+  try {
+    const s = await api("/api/snapshot");
+    S.snap = s; S.live = s.live; S.offset = s.server_time - Date.now() / 1000;
+    for (const m of (s.live?.markets || [])) S.qNames[m.slug] = m.question;
+    for (const c of (s.scan?.candidates || [])) S.qNames[c.slug] = S.qNames[c.slug] || c.question;
+    updateStatus();
+    if (S.view && S.view.update) S.view.update();
+  } catch (e) { S.snap = null; updateStatus(true); }
+  finally { snapBusy = false; }
+}
+function botOnline() {
+  const L = S.live; if (!L) return false;
+  const lim = STATIC ? 2 * (S.snap?.publish_every || 600) + 300 : Math.max(60, 3 * (L.interval || 15) + 20);
+  return serverNow() - L.updated < lim;
+}
+function updateStatus(serverDown = false) {
+  const led = $("#sLed"), txt = $("#sTxt");
+  if (serverDown) { led.className = STATIC ? "led warn" : "led off"; txt.textContent = STATIC ? "nog geen gegevens van je Mac" : "dashboard-server niet bereikbaar"; return; }
+  const L = S.live;
+  if (!L) { led.className = "led warn"; txt.textContent = "wacht op bot…"; return; }
+  if (STATIC) {
+    const on = botOnline(); led.className = on ? "led on" : "led off";
+    txt.textContent = on ? `ONLINE · bot ${dur(serverNow() - L.updated)} geleden bijgewerkt` : `OFFLINE · bot laatst gezien ${dur(serverNow() - L.updated)} geleden`;
+  }
+  else if (botOnline()) { led.className = "led on"; txt.textContent = `LIVE · tick ${dur(serverNow() - L.updated)} geleden`; }
+  else { led.className = "led off"; txt.textContent = `OFFLINE · laatste tick ${dur(serverNow() - L.updated)} geleden`; }
+}
+
+function updateScanner(st) {
+  const box = $("#scanbox"); if (!box) return;
+  const s = Object.assign({}, S.snap?.scan || {}, st || {});
+  const t = $(".st-text", box), bar = $(".bar", box), right = $(".st-right", box);
+  if (s.status === "scant") {
+    const ph = { markten: "markten ophalen", orderboeken: "orderboeken lezen", koershistorie: "koersgeschiedenis checken" }[s.phase] || "bezig";
+    t.innerHTML = `<b>Scant</b> ${ph}${s.total ? ` <span class="num">${n0(s.done)}/${n0(s.total)}</span>` : s.done ? ` <span class="num">${n0(s.done)}</span>` : ""}`;
+    bar.classList.remove("idle"); $("i", bar).style.width = s.total ? Math.round(100 * s.done / s.total) + "%" : "8%";
+    right.textContent = "";
+  } else if (s.status === "fout") {
+    t.innerHTML = `<span class="neg">Scanner-fout</span>`; bar.classList.add("idle"); right.textContent = "";
+  } else {
+    const st2 = s.stats || {};
+    t.innerHTML = s.last_done ? `<b>${n0(st2.total)}</b> markten · <b>${(s.candidates || []).length}</b> kansen` : (STATIC ? "Marktscanner: nog geen resultaten gepubliceerd" : "Eerste scan start zo…");
+    bar.classList.add("idle");
+    right.textContent = s.next_at && s.next_at > serverNow() ? `volgende scan ${dur(s.next_at - serverNow())}` : s.last_done ? `laatste scan ${dur(serverNow() - s.last_done)} geleden` : "";
+  }
+}
+
+// ======================================================================
+// views
+// ======================================================================
+const views = {};
+
+// ---------- HOME ----------
+views.home = {
+  name: "home",
+  mount(app) {
+    app.innerHTML = `
+      <div class="offline-banner" id="offban"><span class="led off"></span><span id="offtxt"></span></div>
+      <section class="hero">
+        <div class="card main">
+          <div class="label">Saldo (nepgeld, incl. geschatte beloningen)</div>
+          <div class="big num" id="hEq">–</div>
+          <div class="delta" id="hDelta">&nbsp;</div>
+        </div>
+        <div class="kpis">
+          <div class="kpi"><div class="label">Totaal resultaat</div><div class="v num" id="kTot">–</div><div class="h">handel + beloningen</div></div>
+          <div class="kpi"><div class="label">Beloningen</div><div class="v num" id="kRew">–</div><div class="h">schatting liquidity rewards</div></div>
+          <div class="kpi"><div class="label">Handel P&amp;L</div><div class="v num" id="kTrd">–</div><div class="h" id="kTrdH">incl. open posities op mid</div></div>
+          <div class="kpi"><div class="label">Per dag</div><div class="v num" id="kDay">–</div><div class="h" id="kDayH">extrapolatie</div></div>
+          <div class="kpi"><div class="label">Kas</div><div class="v num" id="kCash">–</div><div class="h" id="kRes">&nbsp;</div></div>
+          <div class="kpi"><div class="label">In posities</div><div class="v num" id="kInv">–</div><div class="h">waarde op middenprijs</div></div>
+          <div class="kpi"><div class="label">Fills</div><div class="v num" id="kFills">–</div><div class="h">gevulde orders</div></div>
+          <div class="kpi"><div class="label">Looptijd</div><div class="v num" id="kUp">–</div><div class="h" id="kTicks">&nbsp;</div></div>
+        </div>
+      </section>
+
+      <section class="stage">
+        <article class="card tile pm" tabindex="0" data-href="#/polymarket" aria-label="Polymarket: open details">
+          <div class="tile-head"><div class="radar"></div><div class="ttl">Polymarket</div><span class="chip"><span class="led on" style="width:6px;height:6px"></span>live</span></div>
+          <div class="tile-sub" id="pmSub">Bot-markten · elke 15s gescand</div>
+          <div class="mrows" id="mrows"><div class="empty">Wacht op de bot…</div></div>
+          <div class="scanner" id="scanbox">
+            <div class="row1"><span class="st-text">Marktscanner</span><span class="st-right muted"></span></div>
+            <div class="bar idle"><i></i></div>
+          </div>
+          <div class="ports out">
+            <div class="p" data-l="data"><span class="led"></span></div>
+            <div class="p" data-l="signal"><span class="led"></span></div>
+            <div class="p" data-l="cand"><span class="led"></span></div>
+          </div>
+        </article>
+
+        <div class="buslegend" aria-hidden="true">
+          <span><i style="background:${COLORS.data}"></i>data</span>
+          <span><i style="background:${COLORS.signal}"></i>signaal</span>
+          <span><i style="background:${COLORS.fillBuy}"></i>fill</span>
+          <span><i style="background:${COLORS.cand}"></i>kansen</span>
+        </div>
+
+        <article class="card tile bot" tabindex="0" data-href="#/bot" aria-label="Bot: open details">
+          <div class="tile-head">
+            <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect x="5" y="5" width="18" height="18" rx="4" fill="none" stroke="#3987e5" stroke-width="1.6"/><rect x="10" y="10" width="8" height="8" rx="2" fill="#3987e5" opacity=".8"/><path d="M9 2v3M14 2v3M19 2v3M9 23v3M14 23v3M19 23v3M2 9h3M2 14h3M2 19h3M23 9h3M23 14h3M23 19h3" stroke="#273141" stroke-width="1.6" stroke-linecap="round"/></svg>
+            <div class="ttl">PolyMaker BOT</div><span class="chip" id="botChip">–</span>
+          </div>
+          <div class="tile-sub">Market making met nepgeld · quote, vul, herhaal</div>
+          <div class="botbody">
+            <svg class="core" viewBox="0 0 160 160" aria-hidden="true">
+              <circle class="glow" cx="80" cy="80" r="44"/>
+              <circle class="r1" cx="80" cy="80" r="74"/>
+              <circle class="r2" cx="80" cy="80" r="64"/>
+              <circle class="trk" cx="80" cy="80" r="52"/>
+              <circle class="cnt" cx="80" cy="80" r="52" id="cnt"/>
+              <circle class="rip" cx="80" cy="80" r="52"/>
+              <text class="cs" x="80" y="66">TICK</text>
+              <text class="ct" x="80" y="88" id="cTick">–</text>
+              <text class="cs" x="80" y="106" id="cNext">&nbsp;</text>
+            </svg>
+            <div class="slots" id="slots"></div>
+          </div>
+          <div class="lastact" id="lastact">Laatste actie: –</div>
+          <div class="toast" id="toast" aria-live="polite"></div>
+          <div class="ports in">
+            <div class="p" data-l="data"><span class="led"></span><span class="pl">DATA</span></div>
+            <div class="p" data-l="signal"><span class="led"></span><span class="pl">SIGNAAL</span></div>
+            <div class="p" data-l="cand"><span class="led"></span><span class="pl">KANSEN</span></div>
+          </div>
+          <div class="more">details →</div>
+        </article>
+        <svg class="wires" aria-hidden="true"></svg>
+      </section>
+
+      <section class="card feed">
+        <h2>Activiteit</h2>
+        <ul id="feed"></ul>
+      </section>`;
+    $$(".tile", app).forEach(t => {
+      t.addEventListener("click", () => location.hash = t.dataset.href);
+      t.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); location.hash = t.dataset.href; } });
+    });
+    this.ro = new ResizeObserver(() => layoutWires()); this.ro.observe($(".stage"));
+    layoutWires();
+    this.rendered = "";
+    this.update(); this.onFeed();
+    this.anim = setInterval(() => this.countdown(), 200);
+  },
+  unmount() { this.ro && this.ro.disconnect(); clearInterval(this.anim); W.svg = null; },
+  countdown() {
+    const L = S.live, c = $("#cnt"); if (!c) return;
+    const C = 2 * Math.PI * 52; c.style.strokeDasharray = C;
+    if (!L || !botOnline()) { c.style.strokeDashoffset = C; $("#cNext").textContent = L ? "offline" : "wacht"; return; }
+    const iv = L.interval || 15, el = STATIC ? (serverNow() - L.updated) % iv : serverNow() - L.updated, frac = Math.min(1, el / iv);
+    c.style.strokeDashoffset = C * (1 - frac);
+    $("#cNext").textContent = el < iv ? `volgende ${Math.ceil(iv - el)}s` : "bezig…";
+    updateStatus();
+  },
+  update() {
+    const L = S.live, snap = S.snap;
+    const ban = $("#offban"); ban.classList.remove("info");
+    if (!L) { ban.classList.add("show"); $("#offtxt").innerHTML = "Nog geen gegevens van de bot. Start de bot (<code>./mac/bot.sh start</code> of <code>python -m mm paper</code>); het dashboard pikt hem vanzelf op."; }
+    else if (!botOnline()) { ban.classList.add("show"); $("#offtxt").textContent = STATIC
+      ? `De bot draait niet: laatste gegevens van ${ddmm(L.updated)} ${hhmm(L.updated)}. Koersen hieronder zijn wel live. Op je Mac: ./mac/bot.sh status`
+      : `De bot geeft geen teken van leven sinds ${hhmmss(L.updated)}. Controleer met ./mac/bot.sh status.`; }
+    else if (STATIC) { ban.classList.add("show", "info"); $("#offtxt").textContent = `Online versie: koersen en orderboeken zijn live, de cijfers van de bot worden elke ~${Math.round((S.snap?.publish_every || 600) / 60)} min door je Mac bijgewerkt (laatst om ${hhmm(S.snap?.published_at || L.updated)}).`; }
+    else ban.classList.remove("show");
+    if (STATIC && !L) $("#offtxt").textContent = "Nog geen gegevens gepubliceerd. Start op je Mac: ./mac/bot.sh pages";
+    if (L) {
+      $("#hEq").textContent = usd(L.equity + L.rewards);
+      const tot = L.pnl_total, pc = tot / (L.start_cash || 1);
+      $("#hDelta").innerHTML = `<span class="${cls(tot)}">${usd(tot, true)} (${tot >= 0 ? "+" : "−"}${NF2.format(Math.abs(pc * 100))}%)</span> <span class="muted" style="font-family:var(--sans)">sinds start met ${usd(L.start_cash)}</span>`;
+      const set = (id, v, signed) => { const e = $(id); e.textContent = signed ? usd(v, true) : usd(v); e.className = "v num " + (signed ? cls(v) : ""); };
+      set("#kTot", L.pnl_total, true); set("#kRew", L.rewards, true); set("#kTrd", L.pnl_trading, true);
+      set("#kCash", L.cash); set("#kInv", L.inventory);
+      $("#kRes").textContent = `${usd(L.reserved)} vast in orders`;
+      if (L.realized != null) $("#kTrdH").textContent = `gerealiseerd ${usd(L.realized, true)} · open ${usd(L.unrealized, true)}`;
+      const up = L.updated - L.started_at;
+      $("#kUp").textContent = dur(up); $("#kTicks").textContent = `${n0(L.ticks)} ticks deze sessie`;
+      $("#kFills").textContent = n0(L.n_fills);
+      if (up > 6 * 3600) { set("#kDay", L.pnl_total / up * 86400, true); $("#kDayH").textContent = up < 3 * 86400 ? "extrapolatie, nog onbetrouwbaar" : "extrapolatie"; }
+      else { $("#kDay").textContent = "–"; $("#kDayH").textContent = "pas na 6 uur zinvol"; }
+      $("#cTick").textContent = n0(STATIC && botOnline() ? L.ticks + Math.floor((serverNow() - L.updated) / (L.interval || 15)) : L.ticks);
+      $("#pmSub").textContent = STATIC ? `${L.markets.length} bot-markten · live koersen elke 15s` : `${L.markets.length} bot-markten · elke ${L.interval}s gescand`;
+      const chip = $("#botChip"), anyPause = L.markets.some(m => m.status === "pauze");
+      chip.innerHTML = !botOnline() ? `<span class="led off" style="width:6px;height:6px"></span>offline` : anyPause ? `<span class="led warn" style="width:6px;height:6px"></span>deels pauze` : `<span class="led on" style="width:6px;height:6px"></span>actief`;
+      // market rows (rebuild only when set changes)
+      const key = L.markets.map(m => m.slug).join("|");
+      if (key !== this.rendered) {
+        this.rendered = key;
+        $("#mrows").innerHTML = L.markets.map(m => `<div class="mrow" data-slug="${esc(m.slug)}"><span class="led"></span><span class="name" title="${esc(m.question)}">${esc(shortQ(m.question))}</span><span class="sp"></span><span class="mid">–</span></div>`).join("") || `<div class="empty">Geen markten</div>`;
+        $("#slots").innerHTML = L.markets.map(m => `<div class="slot" data-slug="${esc(m.slug)}"><span class="nm">${esc(shortQ(m.question))}</span><span class="q"></span><span class="pl2"></span><div class="posbar"><i></i></div></div>`).join("");
+        requestAnimationFrame(layoutWires);
+      }
+      const maxPos = L.settings?.max_pos || 150;
+      for (const m of L.markets) {
+        const row = $(`.mrow[data-slug="${CSS.escape(m.slug)}"]`);
+        if (row) { $(".mid", row).textContent = cents(m.mid); $(".sp", row).innerHTML = sparkSVG(snap?.sparks?.[m.slug]); }
+        const sl = $(`.slot[data-slug="${CSS.escape(m.slug)}"]`);
+        if (sl) {
+          $(".q", sl).innerHTML = m.status === "geblokkeerd" ? `<span style="color:var(--crit-text)" title="${esc(blockText(m))}">⛔ ${esc(m.block_reason || "geblokkeerd")}</span>` : m.status === "pauze" ? `<span style="color:var(--warn)">⏸ pauze</span>` :
+            `B <b>${m.bid ? cents(m.bid[0]) : "–"}</b> · L <b>${m.ask ? cents(m.ask[0]) : "–"}</b>`;
+          const i = $(".posbar i", sl), f = Math.max(-1, Math.min(1, (m.net || 0) / maxPos));
+          i.style.background = f >= 0 ? COLORS.signal : COLORS.fillSell;
+          i.style.left = f >= 0 ? "50%" : (50 + f * 50) + "%"; i.style.width = Math.abs(f) * 50 + "%";
+          sl.title = `Netto ${m.net >= 0 ? "JA" : "NEE"} ${n0(Math.abs(m.net))} aandelen`;
+          const flat = Math.abs(m.net || 0) < 0.01, res = (m.realized || 0) + (m.unrealized || 0);
+          $(".pl2", sl).innerHTML = flat
+            ? `<span>geen positie</span><span>${Math.abs(m.realized || 0) > 0.004 ? `resultaat <b class="${cls(m.realized)}">${usd(m.realized, true)}</b>` : ""}</span>`
+            : `<span><b>${posLabel(m.net, m.avg)}</b></span><span>handel <b class="${cls(res)}">${usd(res, true)}</b></span>`;
+        }
+      }
+    }
+    updateScanner();
+  },
+  onFeed() {
+    const ul = $("#feed"); if (!ul) return;
+    ul.innerHTML = S.feed.slice(0, 40).map(f => `<li><span class="tm">${hhmmss(f.ts)}</span><span class="dot" style="background:${f.color}"></span><span class="tx">${f.html}</span></li>`).join("")
+      || `<li style="display:block"><div class="empty">Nog geen activiteit. Fills, gesignaleerde handel, noodstops en nieuwe kansen verschijnen hier.</div></li>`;
+  },
+};
+
+// ---------- POLYMARKET ----------
+views.polymarket = {
+  name: "polymarket",
+  mount(app) {
+    app.innerHTML = `
+      <a class="back" href="#/">← Overzicht</a>
+      <h1>Polymarket</h1>
+      <p class="sub">De markten waarin de bot nu quote, en de marktscanner die continu naar nieuwe kansen zoekt.</p>
+      <section class="card" style="margin-bottom:14px">
+        <h2>Bot-markten</h2>
+        <div class="tw"><table><thead><tr>
+          <th>Markt</th><th class="r">Mid</th><th class="r">Boek</th><th class="r">Ons bod</th><th class="r">Onze laat</th>
+          <th class="r">Positie</th><th class="r">Onrust</th><th class="r">Afstand</th><th class="r">Giftig (5m)</th><th class="r">Beloning/dag</th><th class="r">Dagen</th><th>Status</th>
+        </tr></thead><tbody id="bm"></tbody></table></div>
+        <div class="note">Onrust = hoeveel de koers de afgelopen 10 minuten heen en weer ging; hoe onrustiger, hoe groter de afstand van onze orders tot de middenprijs. Giftig = wat fills 5 minuten later waard waren (negatief = de koers ging tegen ons in). Beloning/dag = geschat aandeel in de rewardpool. Klik op een markt voor details.</div>
+        <div class="note" id="rotinfo"></div>
+      </section>
+      <section class="two" style="margin-bottom:14px">
+        <div class="card"><h2>Kansen uit de marktscanner</h2><div class="tw"><table><thead><tr>
+          <th>#</th><th>Markt</th><th class="r">$/dag</th><th class="r">per $100</th><th class="r">Aandeel</th><th class="r">Mid</th><th class="r">Vol/dag</th><th class="r">Dagen</th>
+        </tr></thead><tbody id="cands"></tbody></table></div>
+        <div class="note">De bot ververst zijn markten zelf (standaard elke 24 uur): markten zonder positie die niet meer bij de besten horen of geblokkeerd zijn, worden vervangen door de beste kansen.</div></div>
+        <div class="card"><h2>Scanner</h2><div id="scanbox"><div class="row1" style="display:flex;justify-content:space-between;gap:8px;margin-bottom:8px;font-size:12px"><span class="st-text">–</span><span class="st-right muted"></span></div><div class="bar idle"><i></i></div></div>
+          <h2 style="margin-top:18px">Waarom markten afvallen</h2><div id="rej"></div></div>
+      </section>`;
+    this.update();
+  },
+  update() {
+    const L = S.live, sc = S.snap?.scan;
+    const bm = $("#bm"); if (!bm) return;
+    bm.innerHTML = (L?.markets || []).map(m => `<tr class="click" data-slug="${esc(m.slug)}">
+      <td class="wrap">${esc(shortQ(m.question))}</td><td class="r num">${cents(m.mid)}</td>
+      <td class="r num muted">${cents(m.best_bid)} / ${cents(m.best_ask)}</td>
+      <td class="r num">${m.bid ? `${cents(m.bid[0])} <span class="muted">×${n0(m.bid[1])}</span>` : "–"}</td>
+      <td class="r num">${m.ask ? `${cents(m.ask[0])} <span class="muted">×${n0(m.ask[1])}</span>` : "–"}</td>
+      <td class="r num">${Math.abs(m.net) < 0.01 ? "–" : (m.net > 0 ? "JA " : "NEE ") + n0(Math.abs(m.net))}</td>
+      <td class="r num">${m.unrest == null ? "–" : NF1.format(m.unrest * 100) + "¢"}</td><td class="r num">${m.dist == null ? "–" : NF1.format(m.dist * 100) + "¢"}</td>
+      <td class="r">${toxHTML(m.mk5, m.mk_n)}</td>
+      <td class="r num">${usd(m.est_reward_day)}</td>
+      <td class="r num">${n0(m.days_left)}</td><td title="${esc(blockText(m))}">${statusHTML(m.status)}</td></tr>`).join("") || `<tr><td colspan="12"><div class="empty">Geen gegevens van de bot.</div></td></tr>`;
+    const R = L?.rotation, st2 = L?.settings || {};
+    $("#rotinfo").innerHTML = !st2.rotate_hours ? "Markten verversen staat uit." : R?.scanning ? "Markten verversen: de scanner zoekt nu betere markten…"
+      : `Markten verversen: elke ${hoursText(st2.rotate_hours)}${R?.last ? ` · laatst ${ddmm(R.last)} ${hhmm(R.last)}` : ""}${R?.next ? ` · volgende ${R.next > serverNow() ? "over " + dur(R.next - serverNow()) : "zo"}` : ""}.`;
+    this.bindRows(bm);
+    api("/api/scan").then(full => {
+      const tb = $("#cands"); if (!tb || !$("#rej")) return;
+      tb.innerHTML = (full.candidates || []).map(c => `<tr class="click" data-slug="${esc(c.slug)}">
+        <td class="num muted">${c.rank}</td><td class="wrap">${esc(shortQ(c.question))}${c.active ? '<span class="tag act">actief</span>' : ""}${c.new ? '<span class="tag new">nieuw</span>' : ""}</td>
+        <td class="r num">${usd(c.reward_day)}</td><td class="r num">${usd(c.per_100)}</td><td class="r num">${pct(c.share)}</td>
+        <td class="r num">${cents(c.mid)}</td><td class="r num">${c.vol_c == null ? "–" : NF1.format(c.vol_c) + "¢"}</td><td class="r num">${n0(c.days_left)}</td></tr>`).join("")
+        || `<tr><td colspan="8"><div class="empty">${full.status === "scant" ? "Scan loopt…" : "Nog geen scanresultaten."}</div></td></tr>`;
+      this.bindRows(tb);
+      const rej = Object.entries(full.stats?.rejected || {}).sort((a, b) => b[1] - a[1]);
+      const mx = Math.max(1, ...rej.map(r => r[1]));
+      $("#rej").innerHTML = rej.length ? rej.map(([k, v]) => `<div class="hbar" title="${esc(k)}: ${n0(v)}"><span class="n">${esc(k)}</span><span class="b"><i style="width:${(100 * v / mx).toFixed(1)}%"></i></span><span class="v">${n0(v)}</span></div>`).join("")
+        + `<div class="note">Van ${n0(full.stats?.total)} markten met beloningen kwamen er ${n0(full.stats?.passed)} door alle filters.</div>` : `<div class="empty">Nog geen scan.</div>`;
+    }).catch(() => {});
+    updateScanner();
+  },
+  bindRows(tb) { $$("tr.click", tb).forEach(tr => tr.onclick = () => location.hash = "#/markt/" + encodeURIComponent(tr.dataset.slug)); },
+};
+
+// markout: what a fill was worth 5 minutes later, in cents per share (negative = price moved against us)
+function toxHTML(c, n) {
+  if (c == null || !n) return `<span class="muted">–</span>`;
+  const k = c < -1 ? "neg" : c > 0.25 ? "pos" : "";
+  return `<span class="num ${k}">${c > 0 ? "+" : c < 0 ? "−" : ""}${NF1.format(Math.abs(c))}¢</span> <span class="muted">(${n})</span>`;
+}
+const hoursText = h => h >= 1 ? `${NF0.format(h)} uur` : `${Math.max(1, Math.round(h * 60))} min`;
+const blockText = m => m.blocked_until ? `${m.block_reason || "geblokkeerd"}, tot ${ddmm(m.blocked_until)} ${hhmm(m.blocked_until)}` : "";
+function statusHTML(s) {
+  const map = { quote: ["on", "quote"], pauze: ["warn", "pauze"], wacht: ["", "wacht"], "geen boek": ["off", "geen boek"], geblokkeerd: ["off", "geblokkeerd"], "uit rotatie": ["", "uit rotatie"] };
+  const [c, t] = map[s] || ["warn", s || "–"];
+  return `<span class="st"><span class="led ${c}" style="width:7px;height:7px;${c === "on" ? "animation:none" : ""}"></span>${esc(t)}</span>`;
+}
+
+// ---------- MARKET ----------
+views.market = {
+  name: "market",
+  mount(app, slug) {
+    this.slug = slug; this.last = 0; this.token = null;
+    app.innerHTML = `<a class="back" href="#/polymarket">← Polymarket</a><h1 id="mq">${esc(nameOf(slug))}</h1>
+      <div class="chips" id="mchips"></div>
+      <section class="kpis" id="mk" style="margin-bottom:14px"></section>
+      <section class="two" style="margin-bottom:14px">
+        <div class="card"><h2>Middenprijs</h2><div class="chart" id="mchart"></div><div class="note" id="mnote"></div></div>
+        <div class="card"><h2>Orderboek (live)</h2><div class="book" id="mbook"><div class="empty">Laden…</div></div><div class="note">Omrande regels = waar onze (virtuele) orders staan. Paper-orders staan niet echt in het boek.</div></div>
+      </section>
+      <section class="card"><h2>Fills in deze markt</h2><div class="tw"><table><thead><tr><th>Tijd</th><th>Wat</th><th class="r">Resultaat</th><th class="r">Positie na</th><th>Hoe</th></tr></thead><tbody id="mfills"></tbody></table></div></section>`;
+    this.update(); this.bookTimer = setInterval(() => this.loadBook(), 5000);
+  },
+  unmount() { clearInterval(this.bookTimer); },
+  async update() {
+    const now = Date.now(); if (this.last && now - this.last < 15000) return; this.last = now;
+    let d; try { d = await api(`/api/market?slug=${encodeURIComponent(this.slug)}`); } catch { return; }
+    if (S.view !== this || !$("#mk")) return;
+    this.d = d;
+    const m = d.live, c = d.candidate, q = m?.question || c?.question || this.slug;
+    $("#mq").textContent = shortQ(q);
+    const ytok = m?.yes_token || c?.yes_token; this.token = ytok;
+    $("#mchips").innerHTML = [
+      m ? `<span class="chip">${statusHTML(m.status)}</span>` : `<span class="chip">kandidaat</span>`,
+      (m || c) ? `<span class="chip">${n0((m || c).days_left)} dagen over</span>` : "",
+      m ? `<span class="chip">pool ${usd(m.reward_daily)}/dag</span><span class="chip">band ±${NF1.format(m.max_spread)}¢</span><span class="chip">min ${n0(m.min_size)} aandelen</span>` : (c ? `<span class="chip">pool ${usd(c.pool)}/dag</span>` : ""),
+      `<a class="chip" href="https://polymarket.com/market/${encodeURIComponent(this.slug)}" target="_blank" rel="noopener" style="text-decoration:none">open op Polymarket ↗</a>`,
+    ].join("");
+    const k = (l, v, h = "", c2 = "") => `<div class="kpi"><div class="label">${l}</div><div class="v num ${c2}">${v}</div><div class="h">${h}</div></div>`;
+    $("#mk").innerHTML = m ? [
+      k("Middenprijs", cents(m.mid), `boek ${cents(m.best_bid)} / ${cents(m.best_ask)}`),
+      k("Ons bod", m.bid ? cents(m.bid[0]) : "–", m.bid ? `${n0(m.bid[1])} st · ${n0(m.bid[2])} vóór ons` : "geen order"),
+      k("Onze laat", m.ask ? cents(m.ask[0]) : "–", m.ask ? `${n0(m.ask[1])} st · ${n0(m.ask[2])} vóór ons` : "geen order"),
+      k("Positie", Math.abs(m.net) < 0.01 ? "vlak" : (m.net > 0 ? "JA " : "NEE ") + n0(Math.abs(m.net)), Math.abs(m.net) < 0.01 ? "" : `${posLabel(m.net, m.avg)} · waarde ${usd(m.value)}`),
+      k("Handel in deze markt", usd((m.realized || 0) + (m.unrealized || 0), true), `gerealiseerd ${usd(m.realized || 0, true)} · open ${usd(m.unrealized || 0, true)}`, cls((m.realized || 0) + (m.unrealized || 0))),
+      k("Beloning verdiend", usd3(m.rewards), "schatting"),
+      k("Aandeel in pool", pct(m.share), `≈ ${usd(m.est_reward_day)}/dag`),
+      k("Giftigheid fills", m.mk_n ? `${m.mk5 > 0 ? "+" : m.mk5 < 0 ? "−" : ""}${NF1.format(Math.abs(m.mk5))}¢` : "–", m.mk_n ? `na 5 min, ${m.mk_n} fills${m.mk1 != null ? ` · na 1 min ${NF1.format(m.mk1)}¢` : ""}` : "nog niet gemeten", m.mk_n ? (m.mk5 < -1 ? "neg" : m.mk5 > 0.25 ? "pos" : "") : ""),
+      k("Onrust → afstand", `${NF1.format((m.unrest || 0) * 100)}¢ → ${NF1.format((m.dist || 0) * 100)}¢`, "koersuitslag 10 min → afstand van onze orders"),
+      k("Verliesgrens", m.blocked_until ? "geblokkeerd" : usd(m.loss_since, true), m.blocked_until ? blockText(m) : `handel sinds toelating · grens −${usd(S.live?.settings?.max_loss || 0)}`, m.blocked_until ? "neg" : cls(m.loss_since)),
+      k("Handel gezien", n0(m.trades_seen), "sinds de bot (her)startte"),
+      k("Fills", n0(d.fills.length), ""),
+    ].join("") : c ? [
+      k("Middenprijs", cents(c.mid)), k("Verwachte beloning", usd(c.reward_day) + "/dag", `${usd(c.per_100)} per $100`),
+      k("Aandeel", pct(c.share)), k("Beweeglijkheid", c.vol_c == null ? "–" : NF1.format(c.vol_c) + "¢/dag", c.jump_c == null ? "" : `grootste sprong ${NF0.format(c.jump_c)}¢`),
+    ].join("") : `<div class="kpi"><div class="label">Onbekende markt</div></div>`;
+    // chart: local high-res history, else CLOB history
+    let pts = d.history;
+    if (pts.length < 3 && ytok) { try { pts = (await api(`/api/history?token=${ytok}`)).points; $("#mnote").textContent = "Uurkoersen van Polymarket (afgelopen week)."; } catch { pts = []; } }
+    else $("#mnote").textContent = "Gemeten door de bot (1 punt per minuut).";
+    if (S.view !== this || !$("#mchart")) return;  // user navigated away while loading
+    const markers = d.fills.map(f => ({ t: Date.parse(f.time.replace(" ", "T")) / 1000, v: f.price, color: f.side === "bid" ? COLORS.fillBuy : COLORS.fillSell, shape: f.side === "bid" ? "up" : "down", label: `${f.side === "bid" ? "Koop" : "Verkoop"} ${n0(f.size)} @ ${cents(f.price)}` }));
+    lineChart($("#mchart"), { series: [{ name: "Middenprijs", color: COLORS.total, pts }], markers, markerLegend: markers.length ? [{ name: "Koop-fill", color: COLORS.fillBuy }, { name: "Verkoop-fill", color: COLORS.fillSell }] : [], yfmt: cents, height: 260, minSpan: 0.02, aria: "Middenprijs over tijd", empty: "Nog geen koersgeschiedenis" });
+    $("#mfills").innerHTML = d.fills.map(f => `<tr><td class="num">${esc(f.time)}</td><td><span class="dot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${f.side === "bid" ? COLORS.fillBuy : COLORS.fillSell}"></span> ${f.side === "bid" ? "koop" : "verkoop"} ${n0(f.size)} JA @ ${cents(f.price)}</td>${fillCells(f)}<td class="muted">${esc(f.reason)}</td></tr>`).join("") || `<tr><td colspan="5"><div class="empty">Nog geen fills in deze markt.</div></td></tr>`;
+    this.loadBook();
+  },
+  async loadBook() {
+    if (!this.token || !$("#mbook")) return;
+    let b; try { b = await api(`/api/book?token=${this.token}`); } catch { return; }
+    if (S.view !== this || !$("#mbook")) return;
+    const m = this.d?.live, mx = Math.max(1, ...b.bids.slice(0, 10).map(x => x[1]), ...b.asks.slice(0, 10).map(x => x[1]));
+    const near = (a, p) => p != null && Math.abs(a - p) < 1e-6;
+    const row = (side, [p, s]) => {
+      const me = side === "ask" ? m?.ask && near(p, m.ask[0]) : m?.bid && near(p, m.bid[0]);
+      return `<div class="lvl ${side}${me ? " me" : ""}"><i style="width:${(100 * s / mx).toFixed(1)}%"></i><span>${cents(p)}</span><span class="me-t">${me ? "JIJ" : ""}</span><span class="sz">${n0(s)}</span></div>`;
+    };
+    // add our virtual orders if their level is empty in the real book
+    const asks = b.asks.slice(0, 10), bids = b.bids.slice(0, 10);
+    if (m?.ask && !asks.some(a => near(a[0], m.ask[0])) && m.ask[0] < (asks[asks.length - 1]?.[0] ?? 1)) { asks.push([m.ask[0], 0]); asks.sort((x, y) => x[0] - y[0]); }
+    if (m?.bid && !bids.some(a => near(a[0], m.bid[0])) && m.bid[0] > (bids[bids.length - 1]?.[0] ?? 0)) { bids.push([m.bid[0], 0]); bids.sort((x, y) => y[0] - x[0]); }
+    $("#mbook").innerHTML = `<div class="lvl" style="color:var(--muted)"><span>prijs</span><span></span><span class="sz">aantal</span></div>`
+      + asks.slice().reverse().map(a => row("ask", a)).join("")
+      + `<div class="spreadrow">mid ${cents(b.mid)} · spread ${b.asks[0] && b.bids[0] ? NF1.format((b.asks[0][0] - b.bids[0][0]) * 100) + "¢" : "–"}</div>`
+      + bids.map(x => row("bid", x)).join("");
+  },
+};
+
+// ---------- BOT ----------
+views.bot = {
+  name: "bot",
+  range: "24u", filter: "alles",
+  mount(app) {
+    app.innerHTML = `<a class="back" href="#/">← Overzicht</a><h1>PolyMaker BOT</h1>
+      <p class="sub">Resultaten, posities en alles wat de bot doet. Alle bedragen zijn nepgeld (paper trading).</p>
+      <section class="kpis" id="bk" style="margin-bottom:14px"></section>
+      <section class="card" style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+          <h2 style="margin:0">Resultaat in de tijd</h2>
+          <div class="seg" id="rng">${["1u", "24u", "7d", "30d", "alles"].map(r => `<button data-r="${r}" class="${r === this.range ? "on" : ""}">${r}</button>`).join("")}</div>
+        </div>
+        <div class="chart" id="bchart"></div>
+      </section>
+      <section class="two" style="margin-bottom:14px">
+        <div class="card"><h2>Resultaat per markt</h2><div class="tw"><table><thead><tr><th>Markt</th><th class="r">Positie</th><th class="r">Gekocht @</th><th class="r">Nu</th><th class="r">Open</th><th class="r">Gerealiseerd</th><th class="r">Beloning</th><th class="r">Totaal</th><th class="r">Giftig (5m)</th><th>Status</th></tr></thead><tbody id="bpos"></tbody></table></div>
+          <div class="note">Open = winst/verlies op de positie die er nog staat (tegen de middenprijs). Gerealiseerd = vastgelegd door posities te sluiten. Totaal = open + gerealiseerd + beloning. Giftig = gemiddeld wat een fill 5 minuten later waard was, in cent per aandeel (tussen haakjes: aantal gemeten fills). Geblokkeerd = verliesgrens geraakt of giftige fills: 24 uur alleen nog uitstappen.</div></div>
+        <div class="card"><h2>Instellingen</h2><dl class="kv" id="bset"></dl><div class="note">Wijzigen op de Mac: <code>SIZE=30 MAX_POS=100 ./mac/bot.sh apply</code></div></div>
+      </section>
+      <section class="two">
+        <div class="card"><h2>Fills</h2><div class="tw" style="max-height:420px;overflow:auto"><table><thead><tr><th>Tijd</th><th>Markt</th><th>Wat</th><th class="r">Resultaat</th><th class="r">Positie na</th></tr></thead><tbody id="bfills"></tbody></table></div></div>
+        <div class="card"><h2>Logboek</h2><div class="filters seg" id="flt">${["alles", "fills", "signalen", "scanner", "fouten"].map(f => `<button data-f="${f}" class="${f === this.filter ? "on" : ""}">${f}</button>`).join("")}</div><div class="feed"><ul id="blog"></ul></div></div>
+      </section>`;
+    $$("#rng button").forEach(b => b.onclick = () => { this.range = b.dataset.r; $$("#rng button").forEach(x => x.classList.toggle("on", x === b)); this.loadChart(); });
+    $$("#flt button").forEach(b => b.onclick = () => { this.filter = b.dataset.f; $$("#flt button").forEach(x => x.classList.toggle("on", x === b)); this.onFeed(); });
+    this.update(); this.loadChart(); this.onFeed(); this.loadFills();
+    this.timer = setInterval(() => { this.loadChart(); this.loadFills(); }, 30000);
+    this.ro = new ResizeObserver(() => this.drawChart()); this.ro.observe($("#bchart"));
+  },
+  unmount() { clearInterval(this.timer); this.ro && this.ro.disconnect(); },
+  async loadChart() { try { this.pts = (await api(`/api/equity?range=${this.range}`)).points; this.drawChart(); } catch { } },
+  drawChart() {
+    const el = $("#bchart"); if (!el || !this.pts) return;
+    const P = this.pts;
+    lineChart(el, {
+      series: [
+        { name: "Totaal", color: COLORS.total, pts: P.map(p => [p[0], p[1]]) },
+        { name: "Handel", color: COLORS.trading, pts: P.map(p => [p[0], p[3]]) },
+        { name: "Beloningen", color: COLORS.rewards, pts: P.map(p => [p[0], p[2]]) },
+      ], yfmt: v => usd(v, true), zero: true, minSpan: 1, height: 280, aria: "Resultaat over tijd", empty: "Nog geen resultaten in deze periode",
+    });
+  },
+  async loadFills() {
+    let r; try { r = await api("/api/fills"); } catch { return; }
+    const tb = $("#bfills"); if (!tb) return;
+    tb.innerHTML = r.fills.map(f => `<tr class="click" data-slug="${esc(f.market)}"><td class="num">${esc(f.time.slice(5))}</td><td style="max-width:220px;overflow:hidden;text-overflow:ellipsis">${esc(nameOf(f.market))}</td><td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${f.side === "bid" ? COLORS.fillBuy : COLORS.fillSell}"></span> ${f.side === "bid" ? "koop" : "verkoop"} ${n0(f.size)} @ ${cents(f.price)}</td>${fillCells(f)}</tr>`).join("") || `<tr><td colspan="5"><div class="empty">Nog geen fills. Dat is normaal in het begin: de bot staat achteraan in de wachtrij.</div></td></tr>`;
+    $$("tr.click", tb).forEach(tr => tr.onclick = () => location.hash = "#/markt/" + encodeURIComponent(tr.dataset.slug));
+  },
+  update() {
+    const L = S.live, bk = $("#bk"); if (!bk) return;
+    if (!L) { bk.innerHTML = `<div class="kpi"><div class="label">Geen gegevens</div><div class="v">wacht op bot</div></div>`; return; }
+    const k = (l, v, h = "", c = "") => `<div class="kpi"><div class="label">${l}</div><div class="v num ${c}">${v}</div><div class="h">${h}</div></div>`;
+    const up = L.updated - L.started_at;
+    bk.innerHTML = [
+      k("Saldo", usd(L.equity + L.rewards), `start ${usd(L.start_cash)}`),
+      k("Totaal resultaat", usd(L.pnl_total, true), "", cls(L.pnl_total)),
+      k("Handel P&amp;L", usd(L.pnl_trading, true), "incl. open posities", cls(L.pnl_trading)),
+      k("Beloningen", usd(L.rewards, true), "schatting", cls(L.rewards)),
+      k("Kas", usd(L.cash), `${usd(L.reserved)} vast in orders`),
+      k("In posities", usd(L.inventory), "op middenprijs"),
+      k("Looptijd", dur(up), `${n0(L.ticks)} ticks · elke ${L.interval}s`),
+      k("Laatste tick", hhmmss(L.updated), botOnline() ? "bot is live" : "bot offline", botOnline() ? "" : "neg"),
+    ].join("");
+    const rows = L.markets.concat(L.retired || []).sort((a, b) => (a.pnl ?? 0) - (b.pnl ?? 0));
+    const sum = k => rows.reduce((t, m) => t + (m[k] || 0), 0);
+    const td = v => `<td class="r num ${cls(v)}">${usd(v, true)}</td>`;
+    $("#bpos").innerHTML = rows.map(m => `<tr class="click" data-slug="${esc(m.slug)}"><td style="max-width:240px;overflow:hidden;text-overflow:ellipsis">${esc(shortQ(m.question))}</td>
+      <td class="r num">${Math.abs(m.net) < 0.01 ? "–" : `${n0(Math.abs(m.net))} ${m.net > 0 ? "JA" : "NEE"}`}</td>
+      <td class="r num">${Math.abs(m.net) < 0.01 ? "–" : cents(m.net > 0 ? m.avg : 1 - m.avg)}</td><td class="r num">${Math.abs(m.net) < 0.01 ? cents(m.mid) : cents(m.net > 0 ? m.mid : 1 - m.mid)}</td>
+      ${td(m.unrealized)}${td(m.realized)}${td(m.rewards)}${td(m.pnl)}<td class="r">${toxHTML(m.mk5, m.mk_n)}</td><td title="${esc(blockText(m))}">${statusHTML(m.status)}</td></tr>`).join("")
+      + `<tr class="tot"><td>Totaal</td><td></td><td></td><td></td>${td(sum("unrealized"))}${td(sum("realized"))}${td(sum("rewards"))}${td(sum("pnl"))}<td></td><td></td></tr>`;
+    $$("#bpos tr.click").forEach(tr => tr.onclick = () => location.hash = "#/markt/" + encodeURIComponent(tr.dataset.slug));
+    const s = L.settings || {};
+    $("#bset").innerHTML = [
+      ["Startbedrag", usd(L.start_cash)], ["Markten", L.markets.length], ["Ordergrootte", `${n0(s.size)} aandelen`],
+      ["Max positie per markt", `${n0(s.max_pos)} aandelen`], ["Afstand tot mid", `${s.spread_frac} × beloningsband`],
+      ["Noodstop bij sprong", `> ${NF1.format((s.kill_move || 0) * 100)}¢`], ["Pauze na noodstop", dur(s.cooldown || 0)], ["Interval", `${s.interval}s`],
+      ["Verliesgrens per markt", s.max_loss ? `${usd(s.max_loss)} → ${hoursText(s.block_hours)} blokkeren` : "uit"],
+      ["Giftige fills", s.toxic_cents ? `gem. < −${NF1.format(s.toxic_cents)}¢ na 5 min (min. ${s.toxic_min_fills} fills)` : "uit"],
+      ["Afstand bij onrust", s.vol_factor ? `≥ ${NF1.format(s.vol_factor * 100)}% van de koersuitslag (10 min)` : "uit"],
+      ["Markten verversen", s.rotate_hours ? `elke ${hoursText(s.rotate_hours)} (${n0(s.target_markets)} markten)` : "uit"],
+      ["Agressief (join)", s.join ? "aan" : "uit"],
+    ].map(([a, b]) => `<dt>${a}</dt><dd>${esc(b)}</dd>`).join("");
+  },
+  onFeed() {
+    const ul = $("#blog"); if (!ul) return;
+    const want = { alles: null, fills: ["fill"], signalen: ["trades", "pause", "block", "unblock"], scanner: ["candidate", "scan_done", "rotate", "rotate_start"], fouten: ["error"] }[this.filter];
+    const rows = S.feed.filter(f => !want || want.includes(f.type)).slice(0, 120);
+    ul.innerHTML = rows.map(f => `<li><span class="tm">${hhmmss(f.ts)}</span><span class="dot" style="background:${f.color}"></span><span class="tx">${f.html}</span></li>`).join("") || `<li style="display:block"><div class="empty">Niets in deze categorie (sinds het dashboard openging).</div></li>`;
+  },
+};
+
+// ======================================================================
+// router
+// ======================================================================
+function route() {
+  const h = location.hash.replace(/^#\/?/, "");
+  const [r, arg] = h.split("/");
+  const v = r === "polymarket" ? views.polymarket : r === "bot" ? views.bot : r === "markt" && arg ? views.market : views.home;
+  if (S.view && S.view.unmount) S.view.unmount();
+  hideTip();
+  S.view = v;
+  $$("nav.tabs a").forEach(a => a.classList.toggle("on", a.dataset.r === (r === "markt" ? "polymarket" : (r || ""))));
+  v.mount($("#app"), arg ? decodeURIComponent(arg) : undefined);
+  scrollTo(0, 0);
+}
+addEventListener("hashchange", route);
+
+(async function init() {
+  await refreshSnap();
+  route();
+  if (STATIC) {
+    await staticEvents();
+    livePoll();
+    setInterval(staticEvents, 60000);
+    setInterval(livePoll, 15000);
+    setInterval(refreshSnap, 20000);
+  } else {
+    await pollEvents();
+    setInterval(pollEvents, 1000);
+    setInterval(refreshSnap, 5000);
+  }
+})();
+</script>
+</body>
+</html>
